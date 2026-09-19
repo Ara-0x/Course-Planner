@@ -20,12 +20,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -142,7 +142,7 @@ fun CoursePlannerApp(viewModel: CoursePlannerViewModel) {
                         onClick = { viewModel.navigateTo(AppDestination.COURSES) },
                         icon = {
                             Icon(
-                                if (currentDestination == AppDestination.COURSES) Icons.Filled.MenuBook else Icons.Outlined.MenuBook,
+                                 if (currentDestination == AppDestination.COURSES) Icons.AutoMirrored.Filled.MenuBook else Icons.AutoMirrored.Outlined.MenuBook,
                                 contentDescription = "Courses"
                             )
                         },

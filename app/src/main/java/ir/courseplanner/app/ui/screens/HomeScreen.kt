@@ -37,7 +37,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
@@ -240,7 +240,7 @@ fun HomeScreen(
                 title = "تعداد دروس",
                 value = "${metrics.totalCourses}",
                 unit = "درس",
-                icon = Icons.Default.MenuBook,
+                 icon = Icons.AutoMirrored.Filled.MenuBook,
                 accentColor = Color(0xFF2563EB),
                 modifier = Modifier.weight(1f)
             )

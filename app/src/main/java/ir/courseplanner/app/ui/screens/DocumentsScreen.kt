@@ -48,8 +48,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -676,7 +676,7 @@ private fun DocumentItemCard(
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.OpenInNew,
+                                     imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                                     contentDescription = "مشاهده فایل",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -1062,7 +1062,7 @@ private fun NoCoursesEmptyState(onGoToCourses: () -> Unit) {
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.MenuBook,
+                 imageVector = Icons.AutoMirrored.Filled.MenuBook,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                 modifier = Modifier.size(64.dp)
