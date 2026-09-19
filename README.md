@@ -7,6 +7,14 @@
 - minSdk 24 / targetSdk 36 / Java 17 / Kotlin + Compose Material3
 - دیتابیس: Room (نسخه ۳) — آفلاین-first، بدون بک‌اند
 
+## وضعیت بیلد و توسعه (Build & Status)
+
+- [x] مهاجرت کامل پکیج به `ir.courseplanner.app`
+- [x] ارتقا به Java 17 و Kotlin 2.2.10 و AGP 9.1.1
+- [x] پیاده‌سازی زیرساخت آفلاین (Hilt + Room + DataStore)
+- [x] کامپایل موفق و تولید **Debug APK** در `app/build/outputs/apk/debug/app-debug.apk`
+- [x] رفع تمامی اخطارهای کامپایلر (Deprecations) و مدرن‌سازی کامپوننت‌های Jetpack Compose (استفاده از آیکون‌های AutoMirrored و MenuAnchorType)
+
 ## امکانات فعلی
 
 - تعریف درس، گروه (سکشن)، جلسات هفتگی (شنبه تا جمعه + پشتیبانی از هفته زوج/فرد)، ساعت امتحان
