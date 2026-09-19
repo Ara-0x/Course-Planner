@@ -1,86 +1,172 @@
-# Course Planner — برنامه‌ریز دروس دانشگاه (آفلاین)
+# 🎓 Course Planner | برنامه‌ریز دروس دانشگاه (نسخه آفلاین)
 
-اپلیکیشن اندرویدی **آفلاین** برای مدیریت دروس، تشخیص تداخل کلاسی/امتحانی و تولید خودکار
-برنامه هفتگی بدون تداخل. رابط کاربری کاملاً فارسی و راست‌چین با Jetpack Compose.
+[![Android](https://img.shields.io/badge/Platform-Android-green.svg?style=flat&logo=android)](https://www.android.com/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.2.10-blue.svg?style=flat&logo=kotlin)](https://kotlinlang.org)
+[![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
+[![Architecture](https://img.shields.io/badge/Architecture-MVVM%20%2B%20Clean-orange.svg)]()
+[![Hilt](https://img.shields.io/badge/DI-Hilt-black.svg)]()
+[![Room](https://img.shields.io/badge/Database-Room-blue.svg)]()
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-- Package: `ir.courseplanner.app`
-- minSdk 24 / targetSdk 36 / Java 17 / Kotlin + Compose Material3
-- دیتابیس: Room (نسخه ۳) — آفلاین-first، بدون بک‌اند
+**Course Planner** یک اپلیکیشن مدرن، بومی و **کاملاً آفلاین (Offline-First)** برای سیستم‌عامل اندروید است که با هدف تسهیل انتخاب واحد دانشجویان، مدیریت زمان‌بندی هفتگی و رفع تداخل‌های کلاسی و امتحانی طراحی شده است. رابط کاربری برنامه به‌طور اختصاصی برای زبان فارسی (راست‌چین RTL) و با فریم‌ورک نوین **Jetpack Compose Material 3** پیاده‌سازی شده است.
 
-## وضعیت بیلد و توسعه (Build & Status)
+---
 
-- [x] مهاجرت کامل پکیج به `ir.courseplanner.app`
-- [x] ارتقا به Java 17 و Kotlin 2.2.10 و AGP 9.1.1
-- [x] پیاده‌سازی زیرساخت آفلاین (Hilt + Room + DataStore)
-- [x] کامپایل موفق و تولید **Debug APK** در `app/build/outputs/apk/debug/app-debug.apk`
-- [x] رفع تمامی اخطارهای کامپایلر (Deprecations) و مدرن‌سازی کامپوننت‌های Jetpack Compose (استفاده از آیکون‌های AutoMirrored و MenuAnchorType)
+## 📑 فهرست مطالب
+- [✨ ویژگی‌ها و امکانات](#-ویژگی‌ها-و-امکانات)
+- [🛠 معماری و تکنولوژی‌ها](#-معماری-و-تکنولوژی‌ها)
+- [📂 ساختار پروژه](#-ساختار-پروژه)
+- [🚀 راه‌اندازی و بیلد](#-راه‌اندازی-و-بیلد)
+- [📦 دریافت نسخه نهایی (APK)](#-دریافت-نسخه-نهایی-apk)
+- [🗺 نقشه راه (Roadmap)](#-نقشه-راه-roadmap)
+- [🤝 مشارکت (Contributing)](#-مشارکت-contributing)
+- [📄 لایسنس (License)](#-لایسنس-license)
 
-## امکانات فعلی
+---
 
-- تعریف درس، گروه (سکشن)، جلسات هفتگی (شنبه تا جمعه + پشتیبانی از هفته زوج/فرد)، ساعت امتحان
-- تشخیص تداخل: هم‌پوشانی ساعت کلاس (با احترام به مرز چسبیده = بدون تداخل)، تداخل روز/ساعت امتحان
-- برنامه‌ساز خودکار (backtracking تا ۱۰۰ ترکیب) + رتبه‌بندی با ۴ سلیقه:
-  `توازن کلی / حداقل گپ / فشرده‌ترین روزها / بدون ۸ صبح`
-- ایمپورت CSV و JSON با ولیدیشن فارسی، دیتای نمونه دانشگاهی
-- خروجی متنی فارسی + کپی در کلیپ‌بورد + اشتراک‌گذاری
-- آرشیو جزوات به تفکیک درس و دسته‌بندی + بوکمارک
-- تم روشن/تاریک + ۷ تم رنگی، فونت وزیرمتن، چگالی جدول زمانی
+## ✨ ویژگی‌ها و امکانات
 
-## ساختار پروژه
+### ۱. برنامه‌ساز خودکار هوشمند (Smart Schedule Engine)
+- **تولید برنامه بهینه:** الگوریتم هوشمند مبتنی بر Backtracking برای تولید تا ۱۰۰ ترکیب برنامه درسی هفتگی بدون تداخل.
+- **۴ معیار رتبه‌بندی و اولویت‌بندی:**
+  - ⚖️ **توازن کلی:** پخش یکنواخت ساعات درسی در طول ایام هفته.
+  - ⏱️ **حداقل گپ (حداقل فاصله بین کلاس‌ها):** کاهش زمان‌های پرت بین جلسات.
+  - 📦 **روزهای فشرده:** متمرکز کردن کلاس‌ها در کمترین تعداد روزهای کاری.
+  - ☀️ **بدون ۸ صبح:** حذف یا به حداقل رساندن کلاس‌های اول وقت صبحگاهی.
 
-```
-app/src/main/java/ir/courseplanner/app/
-├── MainActivity.kt                  # هاست Compose + باتم‌نویگیشن (خانه/دروس/برنامه‌ساز/جزوات/تنظیمات)
+### ۲. اعتبارسنجی و تشخیص تداخل (Conflict Detection)
+- تشخیص دقیق هم‌پوشانی ساعت کلاس‌ها با رعایت مرز زمانی (کلاس‌های پشت سر هم بدون تداخل شناخته می‌شوند).
+- پشتیبانی کامل از کلاس‌های **هفته زوج / هفته فرد**.
+- بررسی تداخل روز و بازه ساعتی امتحانات پایان‌ترم.
+
+### ۳. مدیریت دروس و گروه‌ها (Course & Section Management)
+- ثبت درس با مشخصات کد درس، نام، تعداد واحد، گروه (سکشن)، استاد و محل برگزاری.
+- تعریف چندین جلسه در هفته برای هر درس با روزهای متفاوت.
+- جستجوی آنی و فیلتر بر اساس نام، کد و تعداد واحد.
+
+### ۴. آرشیو و سازماندهی جزوات (Documents & Notes Archive)
+- دسته‌بندی و الصاق جزوات، اسلایدها و منابع به تفکیک هر درس.
+- پشتیبانی از لینک و فایل‌های دستگاه با قابلیت نشان‌کردن (Bookmark) و فیلتر سریع.
+
+### ۵. ورودی و خروجی داده‌ها (Import & Export)
+- ایمپورت و اکسپورت سریع از طریق فایل‌های **CSV** و **JSON**.
+- بارگذاری داده‌های نمونه دانشگاهی با یک کلیک جهت تست و آشنایی.
+- کپی متنی و اشتراک‌گذاری جدول زمان‌بندی هفتگی در پیام‌رسان‌ها.
+
+### ۶. شخصی‌سازی و رابط کاربری چشم‌نواز (UI / UX)
+- طراحی اختصاصی بر پایه **Material Design 3**.
+- پشتیبانی کامل از حالت‌های **Dark Mode** و **Light Mode**.
+- ۷ تم رنگی جذاب با هماهنگی کامل فونت خوانای **وزیرمتن (Vazirmatn)**.
+- تنظیم چگالی و ابعاد جدول زمانی برای صفحات نمایش مختلف.
+
+---
+
+## 🛠 معماری و تکنولوژی‌ها
+
+پروژه به صورت ماژولار و مطابق با بهترین الگوهای پیشنهادی مدرن گوگل توسعه یافته است:
+
+- **زبان و ابزارهای بیلد:** Kotlin 2.2.10 | Java 17 | Android Gradle Plugin (AGP) 9.1.1 | KSP 2.3.5
+- **رابط کاربری (UI):** Jetpack Compose با کامپوننت‌های کاملاً مدرن (Material 3)
+- **الگوی معماری:** MVVM (Model-View-ViewModel) + Repository Pattern + Clean Architecture
+- **تزریق وابستگی (DI):** Google Dagger Hilt 2.60.1
+- **پایگاه داده محلی:** Room 2.7.0 با سیستم اسکیماهای نسخه دار (Migrations)
+- **مدیریت تنظیمات:** Jetpack DataStore Preferences
+- **همزمانی (Concurrency):** Kotlin Coroutines & StateFlow
+
+---
+
+## 📂 ساختار پروژه
+
+```text
+ir.courseplanner.app/
+├── MainActivity.kt               # نقطه شروع، Compose Host و ناوبری اصلی
+├── CoursePlannerApplication.kt   # کلاس اصلی اپلیکیشن با انوتیشن @HiltAndroidApp
 ├── data/
-│   ├── model/                       # Course, CourseSection, ClassSession, CourseDocument, ...
-│   ├── local/                       # Room: AppDatabase, CourseDao, SectionDao, CourseDocumentDao
-│   ├── repository/CourseRepository.kt
-│   ├── importer/CourseImporter.kt   # پارس CSV/JSON + نمونه + اکسپورت JSON
-│   └── preferences/AppPreferences.kt
-├── engine/ScheduleEngine.kt         # قلب منطق: تداخل، تولید ترکیب، امتیازدهی
+│   ├── local/                    # دیتابیس Room، جداول (Entities) و DAOها
+│   ├── model/                    # مدل‌های داده‌ای (Course, Section, Session, ...)
+│   ├── repository/               # مخزن داده و مدیریت تراکنش‌ها (CourseRepository)
+│   ├── importer/                 # ماژول پردازش فایل‌های CSV و JSON
+│   └── preferences/              # مدیریت تنظیمات کاربر با DataStore
+├── di/                           # ماژول‌های Hilt (AppModule)
+├── engine/                       # موتور پردازش و برنامه‌سازی هوشمند (ScheduleEngine)
 ├── ui/
-│   ├── CoursePlannerViewModel.kt
-│   ├── screens/  (Home, Courses, Schedule, Documents, Settings)
-│   └── components/ (WeeklyTimetable, AddCourseDialog, ...)
-└── util/TimetableExporter.kt
+│   ├── CoursePlannerViewModel.kt # مدیریت منطق State ও View
+│   ├── screens/                  # صفحات برنامه (Home, Courses, Schedule, Documents, Settings)
+│   ├── components/               # کامپوننت‌های اختصاصی (جدول هفتگی، دیالوگ‌ها و ...)
+│   └── theme/                    # رنگ‌ها، تایپوگرافی و تم‌های هفت‌گانه
+└── util/                         # توابع کمکی تبدیل زمان و تاریخ شمسی و اکسپورت
 ```
 
-## اجرا
+---
 
-1. پروژه را در Android Studio (Koala به بعد، JDK 17) باز کنید.
-2. Gradle Sync بگیرید — نیازی به `google-services.json` یا کلید API نیست.
-3. Run روی امولاتور/گوشی (API 24+).
-4. تست‌ها: `ScheduleEngineTest` (تداخل، هفته زوج/فرد، ژنراتور، ایمپورتر) +
-   `TimetableExporterTest` — از مسیر `app/src/test`.
+## 🚀 راه‌اندازی و بیلد
 
-```bash
-./gradlew :app:testDebugUnitTest
-```
+### پیش‌نیازها
+- **JDK 17**
+- **Android SDK Platform 36** (حداقل API 24)
+- **Android Studio Koala یا جدیدتر**
 
-## شاخه‌ها
+### مراحل بیلد در ترمینال
 
-- `master` — نسخه پایدار (ایمپورت اولیه پروتوتایپ)
-- `develop` — شاخه فعال توسعه (فاز ۰ روی همین شاخه است)
+1. مخزن را کلون کنید:
+   ```bash
+   git clone https://github.com/ARA-0x/Course-Planner.git
+   cd Course-Planner
+   ```
 
-## فاز ۰ — چه چیزی تمیز شد؟
+2. در صورت نیاز فایل `local.properties` را ایجاد و آدرس SDK را در آن قرار دهید:
+   ```properties
+   sdk.dir=C\:\\Users\\<Username>\\AppData\\Local\\Android\\Sdk
+   ```
 
-- [x] کامیت اولیه + شاخه `develop`
-- [x] تغییر پکیج `com.example` و `com.aistudio...` به `ir.courseplanner.app`
-- [x] ارتقای Java 11 به 17
-- [x] حذف وابستگی‌های بلااستفاده (Firebase AI/AppCheck، Retrofit، OkHttp، Moshi، Secrets)
-      چون هیچ کدی از آن‌ها استفاده نمی‌کرد و اپ آفلاین است
-- [x] حذف `metadata.json` و `.env.example` مخصوص AI Studio
-- [x] قوانین ProGuard برای Room (آماده‌سازی فعال‌سازی minify در آینده)
+3. دستور کامپایل و بیلد نسخه دیباگ:
+   - در ویندوز (PowerShell / CMD):
+     ```powershell
+     .\gradlew assembleDebug
+     ```
+   - در لینوکس / مک:
+     ```bash
+     ./gradlew assembleDebug
+     ```
 
-## نقشه راه پیشنهادی
+4. اجرای تست‌های خودکار:
+   ```bash
+   ./gradlew testDebugUnitTest
+   ```
 
-- فاز ۱ (زیرساخت آفلاین — انجام شد): Hilt، DataStore به‌جای SharedPreferences
-  (با `SharedPreferencesMigration` برای حفظ تنظیمات نصب‌های قبلی)، حذف
-  `fallbackToDestructiveMigration` و اجباری شدن Migration برای هر تغییر اسکیما
-  (اسکیماها در `app/schemas` ورژن می‌شوند)
-- بعدی: Navigation-Compose، سقف واحد در ژنراتور، یادآور لوکال کلاس/امتحان،
-  خروجی ICS، بکاپ/ری‌استور فایل JSON
+---
 
-## لایسنس
+## 📦 دریافت نسخه نهایی (APK)
 
-به‌زودی مشخص می‌شود (پیشنهاد: Apache-2.0 یا MIT).
+می‌توانید آخرین نسخه بیلد شده اپلیکیشن را از بخش **[Releases](https://github.com/ARA-0x/Course-Planner/releases)** در همین مخزن دریافت و مستقیماً بر روی دستگاه یا شبیه‌ساز اندرویدی خود نصب نمایید.
+
+---
+
+## 🗺 نقشه راه (Roadmap)
+
+- [x] پاک‌سازی وابستگی‌های ابری و تمرکز بر زیرساخت ۱۰۰٪ آفلاین
+- [x] راه‌اندازی Dagger Hilt و DataStore
+- [x] رفع Deprecationهای کامپوننت‌های Compose و هماهنگی با آخرین نسخه لایبرری‌ها
+- [ ] افزوده شدن ناوبری پیشرفته با Navigation-Compose
+- [ ] امکان تعیین سقف واحد و اولویت‌بندی اختصاصی اساتید در ژنراتور برنامه
+- [ ] اعلان‌های محلی (Local Notifications) برای یادآوری کلاس‌ها و امتحانات
+- [ ] خروجی فایل تقویم iCalendar (.ics) برای هماهنگی با تقویم گوشی
+- [ ] پشتیبان‌گیری خودکار از اطلاعات در حافظه داخلی
+
+---
+
+## 🤝 مشارکت (Contributing)
+
+از هرگونه مشارکت، گزارش باگ و پیشنهادات بهبود استقبال می‌شود!  
+برای مشارکت:
+1. پروژه را Fork کنید.
+2. یک Branch جدید ایجاد نمایید (`git checkout -b feature/AmazingFeature`).
+3. تغییرات خود را Commit کنید (`git commit -m 'feat: Add some AmazingFeature'`).
+4. آن را Push کنید (`git push origin feature/AmazingFeature`).
+5. یک Pull Request جدید باز کنید.
+
+---
+
+## 📄 لایسنس (License)
+
+این پروژه تحت مجوز **[MIT](LICENSE)** منتشر شده است. استفاده، ویرایش و توسعه مجدد آن آزاد است.
