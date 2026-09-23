@@ -384,7 +384,7 @@ export default function App() {
   const backupJsonString = useMemo(() => {
     const payload = {
       version: '1.1.0',
-      versionCode: 2,
+      versionCode: 3,
       exportDate: new Date().toISOString(),
       settings,
       studentCourses,

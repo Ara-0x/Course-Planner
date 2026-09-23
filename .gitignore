@@ -3,7 +3,6 @@
 *.aar
 *.ap_
 *.aab
-*.aab
 
 # Files for the ART/Dalvik VM
 *.dex
@@ -54,11 +53,12 @@ captures/
 .idea/deploymentTargetDropDown.xml
 .idea/render.experimental.xml
 
-# Keystore files
+# Keystore files (never commit real keys; CI restores debug key from base64)
 *.jks
 *.keystore
 my-upload-key.jks
 debug.keystore
+!debug.keystore.base64
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
@@ -118,7 +118,9 @@ Thumbs.db
 node_modules/
 dist/
 bun.lock
-!debug.keystore.base64
+
+# Local CI release staging (APKs are published to GitHub Releases, not git)
+release-output/
 
 # Build folders (except what we want to commit)
 *_public_key.*

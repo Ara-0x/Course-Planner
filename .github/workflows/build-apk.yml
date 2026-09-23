@@ -17,8 +17,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repository (full history for correct SHA)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show checked-out commit (must match latest main)
+        run: |
+          git log --oneline -5
+          echo "HEAD_SHA=$(git rev-parse --short=7 HEAD)"
+          echo "HEAD_SHA=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -48,36 +56,60 @@ jobs:
           fi
           chmod +x ./gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      # IMPORTANT: `clean` + --no-configuration-cache guarantees the APK is
+      # rebuilt from current sources. Without clean, stale dex/resources from
+      # the Gradle cache can make it look like "changes didn't land on APK".
+      - name: Build Debug APK (clean rebuild from current sources)
+        run: ./gradlew clean assembleDebug --no-configuration-cache --stacktrace
 
-      - name: Prepare APK Asset
+      - name: Verify APK carries new version (fail if stale)
+        run: |
+          APK=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          echo "APK=$APK"
+          ls -lh app/build/outputs/apk/debug/
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 5
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='3'|versionName='1.1.0'" \
+            || (echo "::error::APK version mismatch: expected versionCode 3 / versionName 1.1.0. Stale build?"; exit 1)
+
+      - name: Prepare APK Asset (unique name busts CDN/browser cache)
         run: |
           mkdir -p release-output
-          find app/build/outputs/apk/debug/ -name "*.apk" -exec cp {} release-output/CoursePlanner-v1.1.0.apk \;
+          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v1.1.0-${HEAD_SHA}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/CoursePlanner-v1.1.0.apk
           ls -la release-output/
+          sha256sum release-output/*.apk
 
       - name: Upload APK to Release v1.1.0
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.1.0
+          target_commitish: ${{ github.sha }}
           name: Course Planner v1.1.0
           draft: false
           prerelease: false
           body: |
             ## 🎓 انتشار نسخه جدید برنامه‌ریز درسی دانشگاه (نسخه ۱.۱.۰)
 
-            ### ✨ تغییرات و قابلیت‌های جدید:
-            - 🌐 **پرتال دانشگاه:** اضافه شدن مرورگر و استخراج هوشمند اطلاعات دروس از سامانه‌های آموزشی دانشگاهی
-            - ⚖️ **کنترل قوانین آموزشی:** محاسبه هوشمند سقف مجاز انتخاب واحد (مشروط ۱۴ واحد، عادی ۲۰ واحد، ممتاز ۲۴ واحد)
-            - ⚡ **بهبود موتور چیدمان:** بررسی دقیق‌تر تداخل کلاس‌های زوج/فرد و امتحانات پایان‌ترم
-            - 📱 **معماری نیتیو اندروید:** پیاده‌سازی کامل با Jetpack Compose Material 3 و Room Database (کاملاً آفلاین)
-          files: release-output/CoursePlanner-v1.1.0.apk
+            ### 🛠 اصلاح مهم این نسخه:
+            - ✅ رفع مشکل «تغییرات روی APK نمی‌آمد»: بامپ `versionCode` به ۳ و بیلد تمیز (`clean`) تا اندروید آپدیت را تشخیص دهد
+            - 🔍 نمایش نسخه و هش کامیت داخل صفحه تنظیمات برای راستی‌آزمایی بیلد نصب‌شده
+            - 📦 نام فایل یکتا با هش کامیت برای جلوگیری از کش مرورگر/CDN گیت‌هاب
+
+            ### ✨ قابلیت‌ها:
+            - 🌐 **پرتال دانشگاه:** مرورگر و استخراج هوشمند اطلاعات دروس از سامانه‌های آموزشی
+            - ⚖️ **کنترل قوانین آموزشی:** سقف مجاز انتخاب واحد (مشروط ۱۴ واحد، عادی ۲۰ واحد، ممتاز ۲۴ واحد)
+            - ⚡ **موتور چیدمان:** بررسی تداخل کلاس‌های زوج/فرد و امتحانات پایان‌ترم
+            - 📱 **معماری نیتیو:** Jetpack Compose Material 3 و Room (کاملاً آفلاین)
+
+            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v1.1.0 (3)` و هش کامیت جدید را ببینید.
+          files: |
+            release-output/CoursePlanner-v1.1.0.apk
+            release-output/CoursePlanner-v1.1.0-${{ env.HEAD_SHA }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CoursePlanner-v1.1.0-APK
+          name: CoursePlanner-v1.1.0-APK-${{ env.HEAD_SHA }}
           path: release-output/CoursePlanner-v1.1.0.apk

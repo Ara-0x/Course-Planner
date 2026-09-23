@@ -1,3 +1,5 @@
+import java.time.Instant
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -14,10 +16,23 @@ android {
     applicationId = "ir.courseplanner.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 2
+    // NOTE: versionCode MUST be bumped on every user-facing APK release.
+    // Android refuses to install an "update" with the same versionCode,
+    // which is exactly why latest changes looked "missing" on the APK.
+    versionCode = 3
     versionName = "1.1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // Embed git SHA + build time so any installed APK is verifiable
+    // from Settings screen (no more guessing which build is on device).
+    val gitShaProvider = providers.exec {
+      commandLine("git", "rev-parse", "--short=7", "HEAD")
+      isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.trim().ifBlank { "local" } }
+    val gitSha = try { gitShaProvider.get() } catch (_: Exception) { "local" }
+    buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
+    buildConfigField("String", "BUILD_TIME", "\"${Instant.now()}\"")
   }
 
   signingConfigs {

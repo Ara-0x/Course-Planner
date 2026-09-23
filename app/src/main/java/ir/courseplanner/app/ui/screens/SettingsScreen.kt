@@ -77,6 +77,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ir.courseplanner.app.BuildConfig
 import ir.courseplanner.app.data.importer.CourseImporter
 import ir.courseplanner.app.data.importer.ImportItem
 import ir.courseplanner.app.data.importer.ImportSectionItem
@@ -715,6 +716,33 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("حذف تمام اطلاعات (Delete All)", fontWeight = FontWeight.Bold)
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // App version footer: proves which exact build is installed.
+        // If latest changes are missing, compare GIT_SHA with GitHub commit.
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "نسخه برنامه v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "بیلد ${BuildConfig.GIT_SHA} • ${BuildConfig.BUILD_TIME}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
