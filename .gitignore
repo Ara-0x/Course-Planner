@@ -114,6 +114,12 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# Web and preview build
+node_modules/
+dist/
+bun.lock
+debug.keystore.base64
+
 # Build folders (except what we want to commit)
 *_public_key.*
 

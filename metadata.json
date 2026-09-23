@@ -1,0 +1,8 @@
+{
+  "name": "Course Planner",
+  "description": "Comprehensive university course planning and timetable scheduling application with offline-first persistence, automated conflict detection, and smart schedule generation.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
