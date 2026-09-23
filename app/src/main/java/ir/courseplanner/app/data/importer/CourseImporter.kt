@@ -68,6 +68,8 @@ object CourseImporter {
                 val name = courseObj.optString("name", "").trim()
                 val department = courseObj.optString("department", "").trim()
                 val credits = courseObj.optInt("credits", 3)
+                // Null = unknown degree (old files); blank is normalized to null.
+                val degree = courseObj.optString("degree", "").trim().ifBlank { null }
 
                 if (code.isBlank()) {
                     return ImportResult.Failure("ردیف ${i + 1}: کد درس (code) نمی‌تواند خالی باشد.")
@@ -84,7 +86,8 @@ object CourseImporter {
                     name = name,
                     department = department,
                     credits = credits,
-                    isSelectedForGeneration = true
+                    isSelectedForGeneration = true,
+                    degree = degree
                 )
 
                 val sectionItems = mutableListOf<ImportSectionItem>()
@@ -178,7 +181,8 @@ object CourseImporter {
     /**
      * Parses and validates CSV string.
      * Expected CSV Header:
-     * course_code,course_name,department,credits,section_code,instructor,capacity,exam_date,exam_start,exam_end,day_of_week,start_time,end_time,location,week_type
+     * course_code,course_name,department,credits,section_code,instructor,capacity,exam_date,exam_start,exam_end,day_of_week,start_time,end_time,location,week_type,degree
+     * (degree is an optional trailing column; older files without it still parse.)
      */
     fun parseCsv(csvString: String): ImportResult {
         if (csvString.isBlank()) {
@@ -233,13 +237,16 @@ object CourseImporter {
                 val endTime = cols.getOrNull(12) ?: ""
                 val location = cols.getOrNull(13) ?: ""
                 val weekTypeStr = cols.getOrNull(14) ?: ""
+                // Optional trailing column; older files without it still parse.
+                val degree = cols.getOrNull(15)?.trim()?.ifBlank { null }
 
                 if (!courseMetadata.containsKey(code)) {
                     courseMetadata[code] = Course(
                         code = code,
                         name = name,
                         department = department,
-                        credits = credits
+                        credits = credits,
+                        degree = degree
                     )
                 }
 
@@ -501,6 +508,7 @@ object CourseImporter {
             cObj.put("name", item.course.name)
             cObj.put("department", item.course.department)
             cObj.put("credits", item.course.credits)
+            cObj.put("degree", item.course.degree.orEmpty())
 
             val secArr = JSONArray()
             for (sec in item.sections) {

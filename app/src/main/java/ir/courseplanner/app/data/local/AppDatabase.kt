@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import ir.courseplanner.app.data.model.ClassSession
 import ir.courseplanner.app.data.model.Course
 import ir.courseplanner.app.data.model.CourseDocument
@@ -17,7 +19,7 @@ import ir.courseplanner.app.data.model.CourseSection
         ClassSession::class,
         CourseDocument::class
     ],
-    version = 3
+    version = 4
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -35,7 +37,16 @@ abstract class AppDatabase : RoomDatabase() {
          * every schema change MUST bump [version] and add a Migration to
          * [ALL_MIGRATIONS]. Schemas are exported to app/schemas for review.
          */
-        val ALL_MIGRATIONS = emptyArray<androidx.room.migration.Migration>()
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Portal degree level per course. Nullable + no default on purpose:
+                // this is the only ADD COLUMN shape Room's schema validation
+                // accepts byte-identically (pre-migration rows read back as null).
+                db.execSQL("ALTER TABLE courses ADD COLUMN degree TEXT")
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_3_4)
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {

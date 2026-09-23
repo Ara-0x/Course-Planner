@@ -31,6 +31,9 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
@@ -81,9 +84,12 @@ import ir.courseplanner.app.data.model.CourseWithSections
 import ir.courseplanner.app.data.model.SectionWithDetails
 import ir.courseplanner.app.data.model.WeekType
 import ir.courseplanner.app.ui.AppDestination
+import ir.courseplanner.app.ui.CourseDegreeFilter
 import ir.courseplanner.app.ui.CoursePlannerViewModel
 import ir.courseplanner.app.ui.CourseSortOrder
 import ir.courseplanner.app.ui.CourseStatusFilter
+import ir.courseplanner.app.ui.CourseUnitsFilter
+import ir.courseplanner.app.ui.FILTERABLE_DAYS
 import ir.courseplanner.app.ui.components.AddCourseDialog
 import ir.courseplanner.app.ui.components.AddSectionDialog
 
@@ -217,102 +223,292 @@ fun CoursesScreen(
                 }
             }
 
-            // Department filter chips
-            Row(
+            // Collapsible filter panel: keeps the list compact while the catalog
+            // grows (200+ portal rows). Badge shows the active-filter count.
+            val unitsFilter by viewModel.unitsFilter.collectAsStateWithLifecycle()
+            val degreeFilter by viewModel.degreeFilter.collectAsStateWithLifecycle()
+            val dayFilter by viewModel.dayFilter.collectAsStateWithLifecycle()
+            val onlyWithSessions by viewModel.onlyWithSessions.collectAsStateWithLifecycle()
+            var filtersExpanded by remember { mutableStateOf(false) }
+            val activeFilterCount =
+                (if (selectedDept != null) 1 else 0) +
+                    (if (statusFilter != CourseStatusFilter.MY_COURSES) 1 else 0) +
+                    (if (unitsFilter != CourseUnitsFilter.ALL) 1 else 0) +
+                    (if (degreeFilter != CourseDegreeFilter.ALL) 1 else 0) +
+                    (if (dayFilter != null) 1 else 0) +
+                    (if (onlyWithSessions) 1 else 0)
+
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 1.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .clickable { filtersExpanded = !filtersExpanded }
             ) {
-                departments.forEach { dept ->
-                    val isSelected = if (dept == "همه") selectedDept == null else selectedDept == dept
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = {
-                            viewModel.onDepartmentSelected(if (dept == "همه") null else dept)
-                        },
-                        label = {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.FilterList,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "فیلترها",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (activeFilterCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(horizontal = 7.dp, vertical = 1.dp)
+                        ) {
                             Text(
-                                text = dept,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                text = "$activeFilterCount",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        }
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    if (activeFilterCount > 0) {
+                        TextButton(onClick = { viewModel.clearCourseFilters() }) {
+                            Text("حذف همه", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Icon(
+                        if (filtersExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Status filter chips & Sort selector row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            AnimatedVisibility(
+                visible = filtersExpanded,
+                enter = fadeIn(),
+                exit = fadeOut()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    CourseStatusFilter.values().forEach { filter ->
-                        val isSelected = statusFilter == filter
+                    // Department filter chips
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        departments.forEach { dept ->
+                            val isSelected = if (dept == "همه") selectedDept == null else selectedDept == dept
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    viewModel.onDepartmentSelected(if (dept == "همه") null else dept)
+                                },
+                                label = {
+                                    Text(
+                                        text = dept,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+                        }
+                    }
+
+                    // Degree level chips (کاردانی / کارشناسی / ارشد)
+                    FilterLabelRow(label = "مقطع:")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        CourseDegreeFilter.values().forEach { filter ->
+                            val isSelected = degreeFilter == filter
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.setDegreeFilter(filter) },
+                                label = {
+                                    Text(
+                                        text = filter.titleFa,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            )
+                        }
+                    }
+
+                    // Units chips
+                    FilterLabelRow(label = "واحد:")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        CourseUnitsFilter.values().forEach { filter ->
+                            val isSelected = unitsFilter == filter
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.setUnitsFilter(filter) },
+                                label = {
+                                    Text(
+                                        text = filter.titleFa,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+                        }
                         FilterChip(
-                            selected = isSelected,
-                            onClick = { viewModel.setStatusFilter(filter) },
+                            selected = onlyWithSessions,
+                            onClick = { viewModel.setOnlyWithSessions(!onlyWithSessions) },
                             label = {
                                 Text(
-                                    text = filter.titleFa,
+                                    "فقط دارای ساعت کلاسی",
                                     fontSize = 11.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (onlyWithSessions) FontWeight.Bold else FontWeight.Normal
                                 )
                             },
                             shape = RoundedCornerShape(10.dp),
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         )
                     }
-                }
 
-                Spacer(modifier = Modifier.width(6.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                    modifier = Modifier.clickable {
-                        val next = when (sortOrder) {
-                            CourseSortOrder.NAME -> CourseSortOrder.CREDITS_DESC
-                            CourseSortOrder.CREDITS_DESC -> CourseSortOrder.CODE
-                            CourseSortOrder.CODE -> CourseSortOrder.NAME
-                        }
-                        viewModel.setSortOrder(next)
-                    }
-                ) {
+                    // Class-day chips
+                    FilterLabelRow(label = "روز کلاس:")
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = dayFilter == null,
+                            onClick = { viewModel.setDayFilter(null) },
+                            label = { Text("همه روزها", fontSize = 11.5.sp) },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        FILTERABLE_DAYS.forEach { day ->
+                            val isSelected = dayFilter == day
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.setDayFilter(if (isSelected) null else day) },
+                                label = {
+                                    Text(
+                                        text = ClassSession.getDayName(day),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+                        }
+                    }
+
+                    // Status filter chips & Sort selector row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                         Icon(
-                             Icons.AutoMirrored.Filled.Sort,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = sortOrder.titleFa,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CourseStatusFilter.values().forEach { filter ->
+                                val isSelected = statusFilter == filter
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { viewModel.setStatusFilter(filter) },
+                                    label = {
+                                        Text(
+                                            text = filter.titleFa,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier.clickable {
+                                val next = when (sortOrder) {
+                                    CourseSortOrder.NAME -> CourseSortOrder.CREDITS_DESC
+                                    CourseSortOrder.CREDITS_DESC -> CourseSortOrder.CODE
+                                    CourseSortOrder.CODE -> CourseSortOrder.NAME
+                                }
+                                viewModel.setSortOrder(next)
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                 Icon(
+                                     Icons.AutoMirrored.Filled.Sort,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = sortOrder.titleFa,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -437,13 +633,21 @@ fun CoursesScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(14.dp))
-                                Button(
-                                    onClick = { showAddCourseDialog = true },
-                                    shape = RoundedCornerShape(12.dp)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("افزودن درس دستی")
+                                    Button(
+                                        onClick = { showAddCourseDialog = true },
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("افزودن درس دستی")
+                                    }
+                                    TextButton(onClick = { viewModel.clearCourseFilters() }) {
+                                        Text("حذف همه فیلترها", fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -1027,6 +1231,16 @@ private fun SectionItem(
             }
         }
     }
+}
+
+/** Tiny section label used inside the collapsible filter panel. */
+@Composable
+private fun FilterLabelRow(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 /**

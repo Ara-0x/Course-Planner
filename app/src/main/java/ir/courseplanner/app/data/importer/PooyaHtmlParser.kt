@@ -172,7 +172,8 @@ object PooyaHtmlParser {
                         department = department,
                         credits = credits,
                         // Catalog-only: never floods "my courses" or the generator.
-                        isSelectedForGeneration = false
+                        isSelectedForGeneration = false,
+                        degree = degree
                     ),
                     faculty = faculty,
                     degree = degree,

@@ -110,6 +110,20 @@ class CoursePlannerViewModel @Inject constructor(
     private val _sortOrder = MutableStateFlow(CourseSortOrder.NAME)
     val sortOrder: StateFlow<CourseSortOrder> = _sortOrder.asStateFlow()
 
+    // Extra catalog filters (all default to "no filtering").
+    private val _unitsFilter = MutableStateFlow(CourseUnitsFilter.ALL)
+    val unitsFilter: StateFlow<CourseUnitsFilter> = _unitsFilter.asStateFlow()
+
+    private val _degreeFilter = MutableStateFlow(CourseDegreeFilter.ALL)
+    val degreeFilter: StateFlow<CourseDegreeFilter> = _degreeFilter.asStateFlow()
+
+    /** Day of week 0..5 (Sat..Thu), or null for "any day". */
+    private val _dayFilter = MutableStateFlow<Int?>(null)
+    val dayFilter: StateFlow<Int?> = _dayFilter.asStateFlow()
+
+    private val _onlyWithSessions = MutableStateFlow(false)
+    val onlyWithSessions: StateFlow<Boolean> = _onlyWithSessions.asStateFlow()
+
     private val _optimizationPreference = MutableStateFlow(OptimizationPreference.BALANCED)
     val optimizationPreference: StateFlow<OptimizationPreference> = _optimizationPreference.asStateFlow()
 
@@ -179,8 +193,10 @@ class CoursePlannerViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Filtered courses based on search, department, status & sort order
-    val filteredCourses: StateFlow<List<CourseWithSections>> = combine(
+    // Filtered courses: text/department/status/sort first, then the extra
+    // catalog filters (units, degree, day, has-sessions). Two typed stages
+    // keep the combine overloads simple and null-safe.
+    private val baseFilteredCourses: StateFlow<List<CourseWithSections>> = combine(
         coursesWithSections,
         _searchQuery,
         _selectedDepartment,
@@ -211,6 +227,21 @@ class CoursePlannerViewModel @Inject constructor(
             CourseSortOrder.NAME -> filtered.sortedBy { it.course.name }
             CourseSortOrder.CREDITS_DESC -> filtered.sortedByDescending { it.course.credits }
             CourseSortOrder.CODE -> filtered.sortedBy { it.course.code }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val filteredCourses: StateFlow<List<CourseWithSections>> = combine(
+        baseFilteredCourses,
+        _unitsFilter,
+        _degreeFilter,
+        _dayFilter,
+        _onlyWithSessions
+    ) { courses, units, degree, day, withSessions ->
+        courses.filter { cws ->
+            units.matches(cws.course.credits) &&
+                degree.matches(cws.course.degree) &&
+                (day == null || courseHasSessionOnDay(cws, day)) &&
+                (!withSessions || courseHasAnySession(cws))
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -255,6 +286,45 @@ class CoursePlannerViewModel @Inject constructor(
 
     fun setSortOrder(order: CourseSortOrder) {
         _sortOrder.value = order
+    }
+
+    fun setUnitsFilter(filter: CourseUnitsFilter) {
+        _unitsFilter.value = filter
+    }
+
+    fun setDegreeFilter(filter: CourseDegreeFilter) {
+        _degreeFilter.value = filter
+    }
+
+    fun setDayFilter(dayOfWeek: Int?) {
+        _dayFilter.value = dayOfWeek?.takeIf { it in 0..5 }
+    }
+
+    fun setOnlyWithSessions(only: Boolean) {
+        _onlyWithSessions.value = only
+    }
+
+    /** Number of non-default catalog filters (for the filter-panel badge). */
+    fun activeFilterCount(): Int {
+        var count = 0
+        if (_selectedDepartment.value != null) count++
+        if (_statusFilter.value != CourseStatusFilter.MY_COURSES) count++
+        if (_unitsFilter.value != CourseUnitsFilter.ALL) count++
+        if (_degreeFilter.value != CourseDegreeFilter.ALL) count++
+        if (_dayFilter.value != null) count++
+        if (_onlyWithSessions.value) count++
+        return count
+    }
+
+    /** Resets every course-list filter (including search) to its default. */
+    fun clearCourseFilters() {
+        _searchQuery.value = ""
+        _selectedDepartment.value = null
+        _statusFilter.value = CourseStatusFilter.MY_COURSES
+        _unitsFilter.value = CourseUnitsFilter.ALL
+        _degreeFilter.value = CourseDegreeFilter.ALL
+        _dayFilter.value = null
+        _onlyWithSessions.value = false
     }
 
     fun setColorTheme(theme: AppColorTheme) {
