@@ -1,5 +1,8 @@
 package ir.courseplanner.app.ui.screens
 
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Palette
@@ -64,6 +68,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +92,9 @@ import ir.courseplanner.app.data.preferences.ThemeMode
 import ir.courseplanner.app.data.preferences.TimetableDensity
 import ir.courseplanner.app.ui.CoursePlannerViewModel
 import ir.courseplanner.app.util.TimetableExporter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
@@ -105,6 +113,46 @@ fun SettingsScreen(
     var showImportCsvDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
+    var portalFileName by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    // Portal HTML file picker: the saved "presented courses" page is parsed
+    // off-main-thread into the hidden catalog (see PooyaHtmlParser).
+    val portalFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            var content = ""
+            var displayName: String? = null
+            try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && idx >= 0) displayName = cursor.getString(idx)
+                }
+                content = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+                        val sb = StringBuilder()
+                        val buf = CharArray(8192)
+                        var total = 0
+                        while (true) {
+                            val n = reader.read(buf)
+                            if (n < 0) break
+                            total += n
+                            if (total > 15_000_000) break // 15MB safety cap
+                            sb.append(buf, 0, n)
+                        }
+                        sb.toString()
+                    }.orEmpty()
+            } catch (_: Exception) {
+                content = ""
+            }
+            withContext(Dispatchers.Main) {
+                portalFileName = displayName
+                viewModel.importPortalHtml(content, clearExisting = false)
+            }
+        }
+    }
 
     val scrollState = rememberScrollState()
 
@@ -583,6 +631,34 @@ fun SettingsScreen(
                         Text("ورود CSV", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
+
+                // Portal HTML file import (Pooya / Golestan / Sama …)
+                // The saved "presented courses" page becomes a hidden catalog;
+                // courses are added to "my courses" later by entering their code.
+                OutlinedButton(
+                    onClick = { portalFilePicker.launch("*/*") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .testTag("import_portal_html_button"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        if (portalFileName != null) "فایل پرتال: $portalFileName" else "ورود فایل HTML پرتال (پویا)",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = "صفحه «لیست دروس ارائه‌شده» پرتال را ذخیره (Save as HTML) و همین‌جا انتخاب کنید؛ " +
+                        "همه دروس با ساعت کلاس، استاد و ظرفیت وارد کاتالوگ می‌شوند و جلوی چشم نیستند.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 

@@ -56,7 +56,27 @@ class CourseRepository(
         if (clearExisting) {
             clearAllData()
         }
+        insertAll(items)
+    }
 
+    /**
+     * Portal catalog import: same-code courses are replaced (not duplicated),
+     * so re-importing a newer portal file is always safe. Imported courses stay
+     * catalog-only (`isSelectedForGeneration` comes from the parser as false)
+     * until the user adds them by code from the Courses screen.
+     */
+    suspend fun importPortalItems(items: List<ImportItem>, clearExisting: Boolean = false) {
+        if (clearExisting) {
+            clearAllData()
+        } else {
+            for (item in items) {
+                courseDao.deleteCourseByCode(item.course.code)
+            }
+        }
+        insertAll(items)
+    }
+
+    private suspend fun insertAll(items: List<ImportItem>) {
         for (item in items) {
             val courseId = courseDao.insertCourse(item.course)
             for (secItem in item.sections) {

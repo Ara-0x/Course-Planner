@@ -173,6 +173,50 @@ fun CoursesScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Quick-add by course code: matches inside the hidden portal catalog
+            // (courses not yet in "my courses") appear as compact cards here so the
+            // user never has to scroll through 200+ catalog rows.
+            val myCourseIds = remember(allCoursesWithSections) {
+                allCoursesWithSections.filter { cws ->
+                    cws.course.isSelectedForGeneration ||
+                        cws.sections.any { it.section.isEnrolled }
+                }.map { it.course.id }.toSet()
+            }
+            val catalogMatches = remember(searchQuery, allCoursesWithSections) {
+                val q = searchQuery.trim()
+                if (q.isEmpty()) emptyList()
+                else allCoursesWithSections.filter { cws ->
+                    cws.course.id !in myCourseIds &&
+                        (cws.course.code.contains(q, ignoreCase = true) ||
+                            cws.course.name.contains(q, ignoreCase = true))
+                }.take(6)
+            }
+
+            AnimatedVisibility(
+                visible = catalogMatches.isNotEmpty(),
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "یافته‌ها در کاتالوگ پرتال (${catalogMatches.size} مورد) — برای افزودن لمس کنید:",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    catalogMatches.forEach { cws ->
+                        CatalogQuickAddCard(
+                            courseWithSections = cws,
+                            sections = allSections.filter { it.course.id == cws.course.id },
+                            onAdd = { viewModel.addCatalogCourseToMine(cws.course.id) }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+
             // Department filter chips
             Row(
                 modifier = Modifier
@@ -335,6 +379,12 @@ fun CoursesScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.height(12.dp))
+                            // Guide the user when the portal catalog exists but
+                            // "my courses" is still empty: search a code to add.
+                            val catalogOnlyCount = allCoursesWithSections.count { cws ->
+                                !cws.course.isSelectedForGeneration &&
+                                    cws.sections.none { it.section.isEnrolled }
+                            }
                             if (allCoursesWithSections.isEmpty()) {
                                 Text(
                                     text = "کاتالوگ دروس هنوز خالی است.",
@@ -358,6 +408,22 @@ fun CoursesScreen(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("افزودن درس دستی")
                                 }
+                            } else if (searchQuery.isBlank() && catalogOnlyCount > 0 &&
+                                statusFilter == CourseStatusFilter.MY_COURSES
+                            ) {
+                                Text(
+                                    text = "کاتالوگ پرتال با $catalogOnlyCount درس آماده است.",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "کد درس (مثلاً 10559) را در کادر جست‌وجوی بالا وارد کنید تا از کاتالوگ به دروس شما اضافه شود.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             } else {
                                 Text(
                                     text = "هیچ درسی با این مشخصات یافت نشد.",
@@ -958,6 +1024,99 @@ private fun SectionItem(
                         softWrap = false
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Compact catalog result card for "add by course code".
+ * Shows just enough detail (groups, instructor, first session, capacity)
+ * for the user to pick the right course without opening the full catalog.
+ */
+@Composable
+private fun CatalogQuickAddCard(
+    courseWithSections: CourseWithSections,
+    sections: List<SectionWithDetails>,
+    onAdd: () -> Unit
+) {
+    val course = courseWithSections.course
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("catalog_quick_add_${course.code}")
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = course.name,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "کد: ${course.code}  •  ${course.credits} واحد  •  ${sections.size} گروه",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = onAdd,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = 12.dp,
+                        vertical = 4.dp
+                    ),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("افزودن", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            sections.take(2).forEach { sec ->
+                val first = sec.sessions.minByOrNull { it.dayOfWeek * 1440 + it.startMinutes }
+                val preview = if (first != null) {
+                    val extra = if (sec.sessions.size > 1) " +${sec.sessions.size - 1} جلسه دیگر" else ""
+                    "${ClassSession.getDayName(first.dayOfWeek)} ${first.startTime} تا ${first.endTime}" +
+                        (if (first.location.isNotBlank()) " (${first.location})" else "") + extra
+                } else {
+                    "بدون ساعت کلاسی ثبت‌شده"
+                }
+                Text(
+                    text = "گروه ${sec.sectionCode} • ${sec.instructor.ifBlank { "استاد نامشخص" }} • $preview • ظرفیت ${sec.section.capacity}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (sections.size > 2) {
+                Text(
+                    text = "و ${sections.size - 2} گروه دیگر…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

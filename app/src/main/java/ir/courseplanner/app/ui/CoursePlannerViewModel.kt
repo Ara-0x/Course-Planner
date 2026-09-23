@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import ir.courseplanner.app.data.importer.CourseImporter
 import ir.courseplanner.app.data.importer.ImportItem
 import ir.courseplanner.app.data.importer.ImportResult
+import ir.courseplanner.app.data.importer.PooyaHtmlParser
 import ir.courseplanner.app.data.model.ClassSession
 import ir.courseplanner.app.data.model.Conflict
 import ir.courseplanner.app.data.model.Course
@@ -61,6 +62,7 @@ data class GenerationState(
 )
 
 enum class CourseStatusFilter(val titleFa: String) {
+    MY_COURSES("دروس من"),
     ALL("همه دروس"),
     ENROLLED("واحدهای من"),
     TARGETED("هدف برنامه‌ساز")
@@ -100,7 +102,9 @@ class CoursePlannerViewModel @Inject constructor(
     private val _selectedDepartment = MutableStateFlow<String?>(null)
     val selectedDepartment: StateFlow<String?> = _selectedDepartment.asStateFlow()
 
-    private val _statusFilter = MutableStateFlow(CourseStatusFilter.ALL)
+    // Default is "my courses": the portal catalog stays hidden until the user
+    // adds courses by code, instead of flooding the list with 200+ rows.
+    private val _statusFilter = MutableStateFlow(CourseStatusFilter.MY_COURSES)
     val statusFilter: StateFlow<CourseStatusFilter> = _statusFilter.asStateFlow()
 
     private val _sortOrder = MutableStateFlow(CourseSortOrder.NAME)
@@ -193,6 +197,9 @@ class CoursePlannerViewModel @Inject constructor(
 
             val matchStatus = when (status) {
                 CourseStatusFilter.ALL -> true
+                CourseStatusFilter.MY_COURSES ->
+                    cws.course.isSelectedForGeneration ||
+                        cws.sections.any { it.section.isEnrolled }
                 CourseStatusFilter.ENROLLED -> cws.sections.any { it.section.isEnrolled }
                 CourseStatusFilter.TARGETED -> cws.course.isSelectedForGeneration
             }
@@ -487,6 +494,48 @@ class CoursePlannerViewModel @Inject constructor(
                 _userMessage.value = result.errorMessage
                 _isErrorMessage.value = true
             }
+        }
+    }
+
+    /**
+     * Imports a saved university-portal HTML file (Pooya/Golestan/…) into the
+     * hidden course catalog. Same-code courses are replaced, never duplicated.
+     * Parsing runs off the main thread; the file can hold 200+ rows.
+     */
+    fun importPortalHtml(html: String, clearExisting: Boolean) {
+        viewModelScope.launch {
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                PooyaHtmlParser.parsePortalHtml(html)
+            }
+            when (result) {
+                is ImportResult.Success -> {
+                    repository.importPortalItems(result.items, clearExisting = clearExisting)
+                    _userMessage.value = result.message +
+                        " از تب «دروس» با وارد کردن کد درس، به دروس خود اضافه کنید."
+                    _isErrorMessage.value = false
+                }
+                is ImportResult.Failure -> {
+                    _userMessage.value = result.errorMessage
+                    _isErrorMessage.value = true
+                }
+            }
+        }
+    }
+
+    /**
+     * Quick-add: moves a catalog course into "my courses" so it shows up in
+     * the generator and the default list. Called from the code-search card.
+     */
+    fun addCatalogCourseToMine(courseId: Long) {
+        viewModelScope.launch {
+            val target = coursesWithSections.value.firstOrNull { it.course.id == courseId }
+            repository.toggleCourseSelectedForGeneration(courseId, true)
+            _userMessage.value = if (target != null) {
+                "درس «${target.course.name}» به دروس من اضافه شد."
+            } else {
+                "درس به دروس من اضافه شد."
+            }
+            _isErrorMessage.value = false
         }
     }
 

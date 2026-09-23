@@ -49,6 +49,11 @@ interface CourseDao {
     @Query("DELETE FROM courses WHERE id = :courseId")
     suspend fun deleteCourseById(courseId: Long)
 
+    // Portal re-imports replace same-code courses (cascades to sections/sessions),
+    // so importing the same file twice never creates duplicates.
+    @Query("DELETE FROM courses WHERE code = :code")
+    suspend fun deleteCourseByCode(code: String)
+
     @Query("UPDATE courses SET isSelectedForGeneration = :isSelected WHERE id = :courseId")
     suspend fun setCourseSelectedForGeneration(courseId: Long, isSelected: Boolean)
 

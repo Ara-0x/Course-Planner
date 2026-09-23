@@ -383,8 +383,8 @@ export default function App() {
   // Clean Backup Export
   const backupJsonString = useMemo(() => {
     const payload = {
-      version: '1.1.0',
-      versionCode: 3,
+      version: '1.2.0',
+      versionCode: 4,
       exportDate: new Date().toISOString(),
       settings,
       studentCourses,
@@ -465,7 +465,7 @@ export default function App() {
                   {settings.studentName ? `برنامه ${settings.studentName}` : 'Course Planner'}
                 </span>
                 <span className="text-[10px] bg-indigo-950/80 text-indigo-300 font-mono px-1.5 py-0.2 rounded border border-indigo-700/50">
-                  v1.1.0
+                  v1.2.0
                 </span>
               </div>
               <p className="text-[10px] text-slate-400">
