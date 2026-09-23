@@ -2,8 +2,10 @@ package ir.courseplanner.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -223,8 +225,9 @@ fun CoursesScreen(
                 }
             }
 
-            // Collapsible filter panel: keeps the list compact while the catalog
-            // grows (200+ portal rows). Badge shows the active-filter count.
+            // Advanced filter panel (department / degree / units / day):
+            // collapsible so the list stays compact. Status tabs + sort live
+            // pinned below, always visible. Badge shows the active-filter count.
             val unitsFilter by viewModel.unitsFilter.collectAsStateWithLifecycle()
             val degreeFilter by viewModel.degreeFilter.collectAsStateWithLifecycle()
             val dayFilter by viewModel.dayFilter.collectAsStateWithLifecycle()
@@ -232,11 +235,19 @@ fun CoursesScreen(
             var filtersExpanded by remember { mutableStateOf(false) }
             val activeFilterCount =
                 (if (selectedDept != null) 1 else 0) +
-                    (if (statusFilter != CourseStatusFilter.MY_COURSES) 1 else 0) +
                     (if (unitsFilter != CourseUnitsFilter.ALL) 1 else 0) +
                     (if (degreeFilter != CourseDegreeFilter.ALL) 1 else 0) +
                     (if (dayFilter != null) 1 else 0) +
                     (if (onlyWithSessions) 1 else 0)
+            // One-line summary shown on the collapsed header, so applied
+            // filters are visible without expanding the panel.
+            val activeFilterSummary = listOfNotNull(
+                selectedDept,
+                degreeFilter.takeIf { it != CourseDegreeFilter.ALL }?.titleFa,
+                unitsFilter.takeIf { it != CourseUnitsFilter.ALL }?.titleFa,
+                dayFilter?.let { ClassSession.getDayName(it) },
+                "دارای ساعت".takeIf { onlyWithSessions }
+            ).joinToString(" • ")
 
             Surface(
                 shape = RoundedCornerShape(14.dp),
@@ -246,57 +257,72 @@ fun CoursesScreen(
                     .fillMaxWidth()
                     .clickable { filtersExpanded = !filtersExpanded }
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Icon(
-                        Icons.Default.FilterList,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "فیلترها",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    if (activeFilterCount > 0) {
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .padding(horizontal = 7.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "$activeFilterCount",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.FilterList,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "فیلترهای پیشرفته",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        if (activeFilterCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .padding(horizontal = 7.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "$activeFilterCount",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
                         }
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
-                    if (activeFilterCount > 0) {
-                        TextButton(onClick = { viewModel.clearCourseFilters() }) {
-                            Text("حذف همه", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (activeFilterCount > 0) {
+                            TextButton(onClick = { viewModel.clearCourseFilters() }) {
+                                Text("حذف همه", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
+                        Icon(
+                            if (filtersExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
-                    Icon(
-                        if (filtersExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    if (!filtersExpanded && activeFilterSummary.isNotEmpty()) {
+                        Text(
+                            text = activeFilterSummary,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 26.dp)
+                        )
+                    }
                 }
             }
 
             AnimatedVisibility(
                 visible = filtersExpanded,
-                enter = fadeIn(),
-                exit = fadeOut()
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
             ) {
                 Column(
                     modifier = Modifier
@@ -443,72 +469,76 @@ fun CoursesScreen(
                         }
                     }
 
-                    // Status filter chips & Sort selector row
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Pinned status tabs + sort: always visible directly above the
+            // registered-courses bar, never hidden inside the filter panel.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CourseStatusFilter.values().forEach { filter ->
+                        val isSelected = statusFilter == filter
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { viewModel.setStatusFilter(filter) },
+                            label = {
+                                Text(
+                                    text = filter.titleFa,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.clickable {
+                        val next = when (sortOrder) {
+                            CourseSortOrder.NAME -> CourseSortOrder.CREDITS_DESC
+                            CourseSortOrder.CREDITS_DESC -> CourseSortOrder.CODE
+                            CourseSortOrder.CODE -> CourseSortOrder.NAME
+                        }
+                        viewModel.setSortOrder(next)
+                    }
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            CourseStatusFilter.values().forEach { filter ->
-                                val isSelected = statusFilter == filter
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { viewModel.setStatusFilter(filter) },
-                                    label = {
-                                        Text(
-                                            text = filter.titleFa,
-                                            fontSize = 11.5.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                        selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                            modifier = Modifier.clickable {
-                                val next = when (sortOrder) {
-                                    CourseSortOrder.NAME -> CourseSortOrder.CREDITS_DESC
-                                    CourseSortOrder.CREDITS_DESC -> CourseSortOrder.CODE
-                                    CourseSortOrder.CODE -> CourseSortOrder.NAME
-                                }
-                                viewModel.setSortOrder(next)
-                            }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                 Icon(
-                                     Icons.AutoMirrored.Filled.Sort,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = sortOrder.titleFa,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
+                         Icon(
+                             Icons.AutoMirrored.Filled.Sort,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = sortOrder.titleFa,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
