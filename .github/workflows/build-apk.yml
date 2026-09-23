@@ -1,0 +1,81 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Restore Keystore
+        run: |
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure Gradle Wrapper
+        run: |
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper --gradle-version 9.3.1
+          fi
+          chmod +x ./gradlew
+
+      - name: Build Debug APK with Gradle
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Prepare APK Asset
+        run: |
+          mkdir -p release-output
+          find app/build/outputs/apk/debug/ -name "*.apk" -exec cp {} release-output/CoursePlanner-v1.1.0.apk \;
+          ls -la release-output/
+
+      - name: Upload APK to Release v1.1.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.1.0
+          name: Course Planner v1.1.0
+          draft: false
+          prerelease: false
+          body: |
+            ## 🎓 انتشار نسخه جدید برنامه‌ریز درسی دانشگاه (نسخه ۱.۱.۰)
+
+            ### ✨ تغییرات و قابلیت‌های جدید:
+            - 🌐 **پرتال دانشگاه:** اضافه شدن مرورگر و استخراج هوشمند اطلاعات دروس از سامانه‌های آموزشی دانشگاهی
+            - ⚖️ **کنترل قوانین آموزشی:** محاسبه هوشمند سقف مجاز انتخاب واحد (مشروط ۱۴ واحد، عادی ۲۰ واحد، ممتاز ۲۴ واحد)
+            - ⚡ **بهبود موتور چیدمان:** بررسی دقیق‌تر تداخل کلاس‌های زوج/فرد و امتحانات پایان‌ترم
+            - 📱 **معماری نیتیو اندروید:** پیاده‌سازی کامل با Jetpack Compose Material 3 و Room Database (کاملاً آفلاین)
+          files: release-output/CoursePlanner-v1.1.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoursePlanner-v1.1.0-APK
+          path: release-output/CoursePlanner-v1.1.0.apk
