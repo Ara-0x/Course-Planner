@@ -87,6 +87,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -239,6 +240,7 @@ fun DocumentsScreen(
                         FilterChip(
                             selected = selectedCourseId == null,
                             onClick = { viewModel.onDocCourseFilterSelected(null) },
+                            shape = RoundedCornerShape(10.dp),
                             label = { Text("همه دروس (${allDocs.size})", fontSize = 12.sp, maxLines = 1, softWrap = false) }
                         )
 
@@ -247,6 +249,7 @@ fun DocumentsScreen(
                             FilterChip(
                                 selected = selectedCourseId == course.id,
                                 onClick = { viewModel.onDocCourseFilterSelected(course.id) },
+                                shape = RoundedCornerShape(10.dp),
                                 label = {
                                     Text("${course.name} ($docCountForCourse)", fontSize = 12.sp, maxLines = 1, softWrap = false)
                                 }
@@ -267,6 +270,7 @@ fun DocumentsScreen(
                         FilterChip(
                             selected = selectedCategory == null,
                             onClick = { viewModel.onDocCategoryFilterSelected(null) },
+                            shape = RoundedCornerShape(10.dp),
                             label = { Text("همه دسته‌ها", fontSize = 11.5.sp, maxLines = 1, softWrap = false) }
                         )
 
@@ -274,6 +278,7 @@ fun DocumentsScreen(
                             FilterChip(
                                 selected = selectedCategory == cat,
                                 onClick = { viewModel.onDocCategoryFilterSelected(cat) },
+                                shape = RoundedCornerShape(10.dp),
                                 label = { Text(cat.titleFa, fontSize = 11.5.sp, maxLines = 1, softWrap = false) }
                             )
                         }
@@ -461,20 +466,21 @@ private fun DocumentItemCard(
     val course = item.course
     var expandedNotes by remember { mutableStateOf(false) }
 
-    Card(
+    // Same card language as the Courses screen (Surface + soft shadow +
+    // hairline border + 18dp corners) so all tabs look like one app.
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .shadow(1.5.dp, RoundedCornerShape(18.dp))
             .testTag("doc_card_${doc.id}"),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(14.dp)
         ) {
             // Top Row: Course badge, Category badge & Bookmark toggle
             Row(

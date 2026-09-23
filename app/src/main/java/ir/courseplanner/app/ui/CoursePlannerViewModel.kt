@@ -62,10 +62,12 @@ data class GenerationState(
 )
 
 enum class CourseStatusFilter(val titleFa: String) {
+    // NOTE: there is intentionally no separate "generator target" tab:
+    // every enrolled/manual/quick-added course already carries
+    // isSelectedForGeneration, so such a tab would duplicate "دروس من".
     MY_COURSES("دروس من"),
     ALL("همه دروس"),
-    ENROLLED("واحدهای من"),
-    TARGETED("هدف برنامه‌ساز")
+    ENROLLED("واحدهای من")
 }
 
 enum class CourseSortOrder(val titleFa: String) {
@@ -217,7 +219,6 @@ class CoursePlannerViewModel @Inject constructor(
                     cws.course.isSelectedForGeneration ||
                         cws.sections.any { it.section.isEnrolled }
                 CourseStatusFilter.ENROLLED -> cws.sections.any { it.section.isEnrolled }
-                CourseStatusFilter.TARGETED -> cws.course.isSelectedForGeneration
             }
 
             matchQuery && matchDept && matchStatus
@@ -387,7 +388,7 @@ class CoursePlannerViewModel @Inject constructor(
                     isGenerated = true,
                     combinations = emptyList(),
                     rawCombinations = emptyList(),
-                    message = "هیچ درسی برای ساخت برنامه انتخاب نشده است. لطفاً از تب دروس، تیک انتخاب برای تولید برنامه را فعال کنید."
+                    message = "هیچ درسی برای ساخت برنامه انتخاب نشده است. لطفاً در تب دروس، تیک «برنامه‌ساز» را فعال کنید."
                 )
                 return@launch
             }

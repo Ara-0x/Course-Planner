@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,6 +66,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -382,8 +384,8 @@ fun CoursesScreen(
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             )
                         }
@@ -416,6 +418,17 @@ fun CoursesScreen(
                                 )
                             )
                         }
+                    }
+
+                    // Class-time presence is unrelated to credit units, so it
+                    // gets its own row instead of hiding inside the units row.
+                    FilterLabelRow(label = "ساعت کلاسی:")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         FilterChip(
                             selected = onlyWithSessions,
                             onClick = { viewModel.setOnlyWithSessions(!onlyWithSessions) },
@@ -573,6 +586,17 @@ fun CoursesScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Whenever sorting or any filter/search changes, the result set is
+            // rebuilt — jump back to the top so the user never has to scroll
+            // up manually to see the new order.
+            val listState = rememberLazyListState()
+            LaunchedEffect(
+                sortOrder, statusFilter, unitsFilter, degreeFilter,
+                dayFilter, onlyWithSessions, selectedDept, searchQuery
+            ) {
+                listState.scrollToItem(0)
+            }
+
             if (filteredCourses.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -685,6 +709,7 @@ fun CoursesScreen(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -836,9 +861,10 @@ private fun CourseCard(
                             text = course.name,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
+                            // Long course names wrap to a second line instead of
+                            // being cut off with "..." after the first one.
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
-                            softWrap = false,
                             modifier = Modifier.weight(1f, fill = false)
                         )
                         Box(
@@ -925,7 +951,7 @@ private fun CourseCard(
                             modifier = Modifier.padding(start = 8.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
                         ) {
                             Text(
-                                text = "تولید خودکار",
+                                text = "برنامه‌ساز",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -1185,7 +1211,7 @@ private fun SectionItem(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(
-                                        if (sess.weekType == WeekType.EVEN_WEEKS) MaterialTheme.colorScheme.tertiaryContainer
+                                        if (sess.weekType == WeekType.EVEN_WEEKS) MaterialTheme.colorScheme.primaryContainer
                                         else MaterialTheme.colorScheme.secondaryContainer
                                     )
                                     .padding(horizontal = 6.dp, vertical = 1.dp)
@@ -1193,7 +1219,7 @@ private fun SectionItem(
                                 Text(
                                     text = sess.weekType.titleFa,
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                                    color = if (sess.weekType == WeekType.EVEN_WEEKS) MaterialTheme.colorScheme.onTertiaryContainer
+                                    color = if (sess.weekType == WeekType.EVEN_WEEKS) MaterialTheme.colorScheme.onPrimaryContainer
                                     else MaterialTheme.colorScheme.onSecondaryContainer,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -1310,7 +1336,7 @@ private fun CatalogQuickAddCard(
                         text = course.name,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))

@@ -68,44 +68,46 @@ jobs:
           echo "APK=$APK"
           ls -lh app/build/outputs/apk/debug/
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 5
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='6'|versionName='1.4.0'" \
-            || (echo "::error::APK version mismatch: expected versionCode 6 / versionName 1.4.0. Stale build?"; exit 1)
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='7'|versionName='1.5.0'" \
+            || (echo "::error::APK version mismatch: expected versionCode 7 / versionName 1.5.0. Stale build?"; exit 1)
 
       - name: Prepare APK Asset (unique name busts CDN/browser cache)
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v1.4.0-${HEAD_SHA}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/CoursePlanner-v1.4.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v1.5.0-${HEAD_SHA}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/CoursePlanner-v1.5.0.apk
           ls -la release-output/
           sha256sum release-output/*.apk
 
-      - name: Upload APK to Release v1.4.0
+      - name: Upload APK to Release v1.5.0
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.4.0
+          tag_name: v1.5.0
           target_commitish: ${{ github.sha }}
-          name: Course Planner v1.4.0
+          name: Course Planner v1.5.0
           draft: false
           prerelease: false
           body: |
-            ## 🎓 برنامه‌ریز درسی دانشگاه (نسخه ۱.۴.۰)
+            ## 🎓 برنامه‌ریز درسی دانشگاه (نسخه ۱.۵.۰)
 
             ### ✨ جدید در این نسخه:
-            - 📌 **تب‌های وضعیت و مرتب‌سازی همیشه در دسترس:** از پنل کشویی بیرون آمدند و درست بالای «دروس ثبت‌شده» پین شدند
-            - 🎛️ **پنل «فیلترهای پیشرفته» جمع‌شونده** با خلاصه یک‌خطی فیلترهای فعال روی هدر بسته و انیمیشن نرم باز/بسته‌شونده
+            - 🗑️ **حذف تب اضافی «هدف برنامه‌ساز»:** محتوایش کپی «دروس من» بود؛ حالا ۳ تب تمیز: دروس من / واحدهای من / همه دروس
+            - 📝 **عنوان‌های بلند:** نام درس تا ۲ خط می‌شکند، دیگر با `...` بریده نمی‌شود
+            - 🎨 **سازگاری تم‌ها:** چیپ مقطع، بج زوج/فرد و آیکون جزوات حالا از پالت تم انتخابی پیروی می‌کنند (قبلاً همیشه بنفش پیش‌فرض بودند)
+            - 🏷️ عنوان واضح‌تر «برنامه‌ساز» به‌جای «تولید خودکار» + یکدست‌سازی کارت‌های جزوات با بقیه تب‌ها
 
-            ### قبلی (۱.۳.۰):
-            - 🎓 فیلتر مقطع (کاردانی/کارشناسی/ارشد)، فیلتر واحد و روز کلاس
+            ### قبلی (۱.۴.۰):
+            - 📌 تب‌های وضعیت و مرتب‌سازی پین‌شده؛ پنل «فیلترهای پیشرفته» با خلاصه فعال
 
-            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v1.4.0 (6)` و هش کامیت جدید را ببینید.
+            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v1.5.0 (7)` و هش کامیت جدید را ببینید.
           files: |
-            release-output/CoursePlanner-v1.4.0.apk
-            release-output/CoursePlanner-v1.4.0-${{ env.HEAD_SHA }}.apk
+            release-output/CoursePlanner-v1.5.0.apk
+            release-output/CoursePlanner-v1.5.0-${{ env.HEAD_SHA }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CoursePlanner-v1.4.0-APK-${{ env.HEAD_SHA }}
-          path: release-output/CoursePlanner-v1.4.0.apk
+          name: CoursePlanner-v1.5.0-APK-${{ env.HEAD_SHA }}
+          path: release-output/CoursePlanner-v1.5.0.apk
