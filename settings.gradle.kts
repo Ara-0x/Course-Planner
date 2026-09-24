@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Course Planner"
+rootProject.name = "TermChin"
 
 include(":app")

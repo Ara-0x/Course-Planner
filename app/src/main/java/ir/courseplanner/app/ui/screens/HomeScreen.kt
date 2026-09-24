@@ -143,7 +143,7 @@ fun HomeScreen(
                     ) {
                         Column {
                             Text(
-                                text = if (preferences.studentName.isNotBlank()) "سلام، ${preferences.studentName} 👋" else "برنامه‌ریز درسی دانشگاه",
+                                text = if (preferences.studentName.isNotBlank()) "سلام، ${preferences.studentName} 👋" else "TermChin | ترم‌چین",
                                 style = MaterialTheme.typography.headlineSmall.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 20.sp

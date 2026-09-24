@@ -80,6 +80,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,13 +116,34 @@ fun DocumentsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val courses by viewModel.allCourses.collectAsStateWithLifecycle()
-    val allDocs by viewModel.documentsWithCourse.collectAsStateWithLifecycle()
-    val filteredDocs by viewModel.filteredDocuments.collectAsStateWithLifecycle()
+    val allCourses by viewModel.allCourses.collectAsStateWithLifecycle()
+    val enrolledSections by viewModel.enrolledSections.collectAsStateWithLifecycle()
+    // Tabs and pickers only for courses that are on the applied weekly plan
+    // (finalized enrollments), not the hidden portal catalog.
+    val courses = remember(allCourses, enrolledSections) {
+        val enrolledCourseIds = enrolledSections.map { it.course.id }.toSet()
+        allCourses.filter { it.id in enrolledCourseIds }
+    }
+    val allDocsRaw by viewModel.documentsWithCourse.collectAsStateWithLifecycle()
+    val allDocs = remember(allDocsRaw, courses) {
+        val allowedIds = courses.map { it.id }.toSet()
+        allDocsRaw.filter { it.course.id in allowedIds }
+    }
+    val filteredDocsRaw by viewModel.filteredDocuments.collectAsStateWithLifecycle()
+    val filteredDocs = remember(filteredDocsRaw, courses) {
+        val allowedIds = courses.map { it.id }.toSet()
+        filteredDocsRaw.filter { it.course.id in allowedIds }
+    }
     val selectedCourseId by viewModel.selectedDocCourseId.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedDocCategory.collectAsStateWithLifecycle()
     val searchQuery by viewModel.docSearchQuery.collectAsStateWithLifecycle()
     val onlyBookmarked by viewModel.onlyBookmarkedDocs.collectAsStateWithLifecycle()
+
+    LaunchedEffect(courses, selectedCourseId) {
+        if (selectedCourseId != null && courses.none { it.id == selectedCourseId }) {
+            viewModel.onDocCourseFilterSelected(null)
+        }
+    }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingDoc by remember { mutableStateOf<CourseDocument?>(null) }
@@ -1075,14 +1097,14 @@ private fun NoCoursesEmptyState(onGoToCourses: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "هنوز درسی ثبت نشده است",
+                text = "هنوز درس نهایی‌شده‌ای ندارید",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "برای ذخیره جزوات و اسناد، ابتدا باید درس‌های خود را در بخش دروس اضافه کنید.",
+                text = "تب جزوات فقط برای دروسی است که در برنامه هفتگی اعمال و نهایی شده‌اند. ابتدا دروس را انتخاب کنید و برنامه را اعمال نمایید.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

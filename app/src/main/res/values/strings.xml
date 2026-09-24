@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Course Planner</string>
+    <string name="app_name">TermChin</string>
     <string name="nav_home">Home</string>
     <string name="nav_courses">Courses</string>
     <string name="nav_schedule">Schedule</string>

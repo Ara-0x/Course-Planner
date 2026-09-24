@@ -810,7 +810,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = "نسخه برنامه v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    text = "TermChin | ترم‌چین  •  v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )

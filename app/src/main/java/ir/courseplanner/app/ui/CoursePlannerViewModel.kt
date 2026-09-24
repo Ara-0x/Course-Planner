@@ -399,7 +399,9 @@ class CoursePlannerViewModel @Inject constructor(
                 allSecs.filter { it.course.id == cws.course.id }
             }
 
-            val validSchedules = ScheduleEngine.generateConflictFreeSchedules(courseGroups)
+            val validSchedules = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                ScheduleEngine.generateConflictFreeSchedules(courseGroups)
+            }
 
             if (validSchedules.isEmpty()) {
                 _generationState.value = GenerationState(

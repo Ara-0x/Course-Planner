@@ -90,7 +90,7 @@ object TimetableExporter {
             sb.appendLine("───────────────────────────")
         }
 
-        sb.appendLine("ایجاد شده توسط برنامه‌ریز درسی دانشگاه (آفلاین)")
+        sb.appendLine("ایجاد شده توسط TermChin | ترم‌چین")
         return sb.toString().trim()
     }
 

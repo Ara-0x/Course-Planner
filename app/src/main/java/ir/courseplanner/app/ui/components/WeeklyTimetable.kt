@@ -67,6 +67,16 @@ data class TimetableItem(
     val color: Color
 )
 
+/** Uniform 2-hour university blocks used by the weekly calendar. */
+internal val TimetableTwoHourSlots = listOf(
+    "08:00" to "10:00",
+    "10:00" to "12:00",
+    "12:00" to "14:00",
+    "14:00" to "16:00",
+    "16:00" to "18:00",
+    "18:00" to "20:00"
+)
+
 @Composable
 fun WeeklyTimetable(
     sections: List<SectionWithDetails>,
@@ -366,12 +376,7 @@ private fun TimetableGridView(
     val days = if (showThursday || hasThursdayClasses) (0..5).toList() else (0..4).toList()
     val scrollState = rememberScrollState()
 
-    val timeSlots = listOf(
-        Pair("08:00", "10:00"),
-        Pair("10:00", "12:00"),
-        Pair("13:30", "15:30"),
-        Pair("15:30", "17:30")
-    )
+    val timeSlots = TimetableTwoHourSlots
 
     val baseCellHeight = when (density) {
         TimetableDensity.COMPACT -> 76.dp
@@ -663,9 +668,21 @@ private fun TimetableDayView(
                 )
             }
         } else {
-            // Elegant Vertical Schedule Timeline
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                dayItems.forEachIndexed { index, item ->
+                TimetableTwoHourSlots.forEach { (slotStart, slotEnd) ->
+                    val slotStartMin = ClassSession.timeToMinutes(slotStart)
+                    val slotEndMin = ClassSession.timeToMinutes(slotEnd)
+                    val slotItems = dayItems.filter { item ->
+                        maxOf(item.session.startMinutes, slotStartMin) < minOf(item.session.endMinutes, slotEndMin)
+                    }
+                    if (slotItems.isEmpty()) return@forEach
+                    Text(
+                        text = "$slotStart تا $slotEnd",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    slotItems.forEach { item ->
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
