@@ -139,7 +139,6 @@ fun SettingsScreen(
     val isErrorMessage by viewModel.isErrorMessage.collectAsStateWithLifecycle()
 
     var showDeleteAllDialog by remember { mutableStateOf(false) }
-    var showLoadSampleDialog by remember { mutableStateOf(false) }
     var showImportJsonDialog by remember { mutableStateOf(false) }
     var showImportCsvDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -624,24 +623,10 @@ fun SettingsScreen(
                     )
                 }
                 Text(
-                    text = "می‌توانید کاتالوگ دروس دانشگاهی را کاملاً آفلاین با فرمت‌های استاندارد وارد کنید:",
+                    text = "می‌توانید کاتالوگ دروس را کاملاً آفلاین وارد کنید. فایل را انتخاب کنید یا متن را بچسبانید:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
-                // Quick Sample Loader
-                Button(
-                    onClick = { showLoadSampleDialog = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .testTag("load_sample_catalog_button"),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.School, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("بارگذاری نمونه دروس دانشگاهی (پیش‌فرض)", fontWeight = FontWeight.SemiBold)
-                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -651,38 +636,68 @@ fun SettingsScreen(
                         onClick = { jsonFilePicker.launch("application/json") },
                         modifier = Modifier
                             .weight(1f)
-                            .height(42.dp)
                             .testTag("import_json_button"),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.DataObject, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("انتخاب فایل JSON", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.DataObject, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "فایل JSON",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
 
                     OutlinedButton(
                         onClick = { csvFilePicker.launch("text/*") },
                         modifier = Modifier
                             .weight(1f)
-                            .height(42.dp)
                             .testTag("import_csv_button"),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.TableView, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("انتخاب فایل CSV", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.TableView, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "فایل CSV",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TextButton(onClick = { showImportJsonDialog = true }) {
-                        Text("چسباندن متن JSON", fontSize = 11.sp)
+                    OutlinedButton(
+                        onClick = { showImportJsonDialog = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("paste_json_button"),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.DataObject, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("چسباندن JSON", fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
                     }
-                    TextButton(onClick = { showImportCsvDialog = true }) {
-                        Text("چسباندن متن CSV", fontSize = 11.sp)
+                    OutlinedButton(
+                        onClick = { showImportCsvDialog = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("paste_csv_button"),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.TableView, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("چسباندن CSV", fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
                     }
                 }
 
@@ -882,28 +897,6 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-    }
-
-    // Confirmation dialog: sample data intentionally replaces the current catalog.
-    if (showLoadSampleDialog) {
-        AlertDialog(
-            onDismissRequest = { showLoadSampleDialog = false },
-            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("بارگذاری دادهٔ نمونه", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
-            text = { Text("بارگذاری دادهٔ نمونه، تمام درس‌ها، گروه‌ها، برنامهٔ فعلی و جزوات شما را جایگزین می‌کند. آیا ادامه می‌دهید؟") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.loadSampleData(clearExisting = true)
-                        showLoadSampleDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("بله، جایگزین کن") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLoadSampleDialog = false }) { Text("انصراف") }
-            }
-        )
     }
 
     // Confirmation Dialog for Delete All

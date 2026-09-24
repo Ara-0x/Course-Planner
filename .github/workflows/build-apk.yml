@@ -68,46 +68,41 @@ jobs:
           echo "APK=$APK"
           ls -lh app/build/outputs/apk/debug/
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 5
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='8'|versionName='2.0.0'" \
-            || (echo "::error::APK version mismatch: expected versionCode 8 / versionName 2.0.0. Stale build?"; exit 1)
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='9'|versionName='2.0.1'" \
+            || (echo "::error::APK version mismatch: expected versionCode 9 / versionName 2.0.1. Stale build?"; exit 1)
 
       - name: Prepare APK Asset (unique name busts CDN/browser cache)
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v2.0.0-${HEAD_SHA}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/CoursePlanner-v2.0.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v2.0.1-${HEAD_SHA}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/CoursePlanner-v2.0.1.apk
           ls -la release-output/
           sha256sum release-output/*.apk
 
-      - name: Upload APK to Release v2.0.0
+      - name: Upload APK to Release v2.0.1
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.0
+          tag_name: v2.0.1
           target_commitish: ${{ github.sha }}
-          name: TermChin v2.0.0
+          name: TermChin v2.0.1
           draft: false
           prerelease: false
           body: |
-            ## 🎓 TermChin | ترم‌چین — نسخه ۲.۰.۰
+            ## 🎓 TermChin | ترم‌چین — نسخه ۲.۰.۱
 
             ### ✨ جدید در این نسخه:
-            - 🎓 **ری‌برند کامل به TermChin (ترم‌چین):** نام، لوگو و هویت بصری جدید
-            - 📅 **تقویم ۲ساعته یکنواخت:** بازه‌های ۸-۱۰، ۱۰-۱۲، ۱۲-۱۴، ۱۴-۱۶، ۱۶-۱۸، ۱۸-۲۰ در نمای گرید و روزانه
-            - 📝 **جزوات فقط دروس نهایی‌شده:** تب‌ها و فیلتر جزوات فقط دروس اعمال‌شده در برنامه هفتگی را نشان می‌دهد
-            - 🎨 **تم‌های خواناتر و لوگوی جدید:** پالت رنگ روشن/تیره بهبود یافته و آیکون جدید در همه دانسیته‌ها
+            - 🛠️ **فیکس صفحه تنظیمات:** حذف دکمه نمونه، اصلاح کارت «دریافت اطلاعات درس‌ها» (متن‌ها کامل نمایش داده می‌شود، هر ۴ دکمه دارای استایل مشخص)
+            - 📅 تقویم ۲ساعته و جزوات فیلترشده از نسخه قبل
 
-            ### قبلی (۱.۵.۰):
-            - 📌 پین تب‌ها، عنوان‌های ۲خطی، سازگاری تم‌ها
-
-            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v2.0.0 (8)` و هش کامیت جدید را ببینید.
+            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v2.0.1 (9)` و هش کامیت جدید را ببینید.
           files: |
-            release-output/CoursePlanner-v2.0.0.apk
-            release-output/CoursePlanner-v2.0.0-${{ env.HEAD_SHA }}.apk
+            release-output/CoursePlanner-v2.0.1.apk
+            release-output/CoursePlanner-v2.0.1-${{ env.HEAD_SHA }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TermChin-v2.0.0-APK-${{ env.HEAD_SHA }}
-          path: release-output/CoursePlanner-v2.0.0.apk
+          name: TermChin-v2.0.1-APK-${{ env.HEAD_SHA }}
+          path: release-output/CoursePlanner-v2.0.1.apk
