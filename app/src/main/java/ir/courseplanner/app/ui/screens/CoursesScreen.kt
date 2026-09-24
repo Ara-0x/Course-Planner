@@ -122,7 +122,7 @@ fun CoursesScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { showAddCourseDialog = true },
-                icon = { Icon(Icons.Default.Add, contentDescription = "Add Course") },
+                icon = { Icon(Icons.Default.Add, contentDescription = "افزودن درس دستی") },
                 text = { Text("افزودن درس دستی", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -161,14 +161,14 @@ fun CoursesScreen(
                     leadingIcon = {
                         Icon(
                             Icons.Default.Search,
-                            contentDescription = "Search",
+                            contentDescription = "جست‌وجوی درس",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     },
                     trailingIcon = {
                         if (searchQuery.isNotBlank()) {
                             IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear")
+                                Icon(Icons.Default.Clear, contentDescription = "پاک کردن جست‌وجو")
                             }
                         }
                     },

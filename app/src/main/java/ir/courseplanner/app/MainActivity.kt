@@ -124,7 +124,7 @@ fun CoursePlannerApp(viewModel: CoursePlannerViewModel) {
                         icon = {
                             Icon(
                                 if (currentDestination == AppDestination.HOME) Icons.Filled.Home else Icons.Outlined.Home,
-                                contentDescription = "Home"
+                                contentDescription = "خانه"
                             )
                         },
                         label = {
@@ -143,7 +143,7 @@ fun CoursePlannerApp(viewModel: CoursePlannerViewModel) {
                         icon = {
                             Icon(
                                  if (currentDestination == AppDestination.COURSES) Icons.AutoMirrored.Filled.MenuBook else Icons.AutoMirrored.Outlined.MenuBook,
-                                contentDescription = "Courses"
+                                contentDescription = "دروس"
                             )
                         },
                         label = {
@@ -162,7 +162,7 @@ fun CoursePlannerApp(viewModel: CoursePlannerViewModel) {
                         icon = {
                             Icon(
                                 if (currentDestination == AppDestination.SCHEDULE) Icons.Filled.AutoAwesome else Icons.Outlined.AutoAwesome,
-                                contentDescription = "Schedule"
+                                contentDescription = "برنامه‌ساز"
                             )
                         },
                         label = {
@@ -181,7 +181,7 @@ fun CoursePlannerApp(viewModel: CoursePlannerViewModel) {
                         icon = {
                             Icon(
                                 if (currentDestination == AppDestination.DOCUMENTS) Icons.Filled.Description else Icons.Outlined.Description,
-                                contentDescription = "Documents"
+                                contentDescription = "جزوات"
                             )
                         },
                         label = {
@@ -200,7 +200,7 @@ fun CoursePlannerApp(viewModel: CoursePlannerViewModel) {
                         icon = {
                             Icon(
                                 if (currentDestination == AppDestination.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings,
-                                contentDescription = "Settings"
+                                contentDescription = "تنظیمات"
                             )
                         },
                         label = {

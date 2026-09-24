@@ -8,7 +8,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,7 +60,8 @@ fun ConflictBanner(
     hasEnrolledCourses: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    // Respect the app's explicit light/dark preference, not only the device setting.
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     var isExpanded by remember { mutableStateOf(false) }
 
     if (!hasEnrolledCourses) {
@@ -140,7 +141,7 @@ fun ConflictBanner(
                     ) {
                         Icon(
                             imageVector = if (hasConflict) Icons.Default.Warning else Icons.Default.CheckCircle,
-                            contentDescription = if (hasConflict) "Conflict warning" else "Schedule ok",
+                            contentDescription = if (hasConflict) "هشدار تداخل برنامه" else "برنامه بدون تداخل است",
                             tint = contentColor,
                             modifier = Modifier.size(18.dp)
                         )
@@ -173,7 +174,7 @@ fun ConflictBanner(
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = "Toggle details",
+                        contentDescription = "نمایش جزئیات تداخل‌ها",
                         tint = contentColor,
                         modifier = Modifier.size(22.dp)
                     )

@@ -1,5 +1,7 @@
 package ir.courseplanner.app.ui.screens
 
+import android.content.Context
+import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -96,6 +98,34 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val MAX_IMPORT_CHARS = 15_000_000
+
+/** Reads user-selected text without letting a huge file block the app. */
+private fun readImportText(context: Context, uri: Uri): String {
+    return context.contentResolver.openInputStream(uri)
+        ?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+            val builder = StringBuilder()
+            val buffer = CharArray(8192)
+            var total = 0
+            while (true) {
+                val read = reader.read(buffer)
+                if (read < 0) break
+                total += read
+                require(total <= MAX_IMPORT_CHARS) { "فایل انتخاب‌شده بزرگ‌تر از حد مجاز است." }
+                builder.append(buffer, 0, read)
+            }
+            builder.toString()
+        }.orEmpty()
+}
+
+private fun String.normalizeDigitsForNumber(): String = map { char ->
+    when (char) {
+        in '۰'..'۹' -> ('0'.code + (char.code - '۰'.code)).toChar()
+        in '٠'..'٩' -> ('0'.code + (char.code - '٠'.code)).toChar()
+        else -> char
+    }
+}.joinToString("")
+
 @Composable
 fun SettingsScreen(
     viewModel: CoursePlannerViewModel,
@@ -109,6 +139,7 @@ fun SettingsScreen(
     val isErrorMessage by viewModel.isErrorMessage.collectAsStateWithLifecycle()
 
     var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var showLoadSampleDialog by remember { mutableStateOf(false) }
     var showImportJsonDialog by remember { mutableStateOf(false) }
     var showImportCsvDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -130,26 +161,37 @@ fun SettingsScreen(
                     val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     if (cursor.moveToFirst() && idx >= 0) displayName = cursor.getString(idx)
                 }
-                content = context.contentResolver.openInputStream(uri)
-                    ?.bufferedReader(Charsets.UTF_8)?.use { reader ->
-                        val sb = StringBuilder()
-                        val buf = CharArray(8192)
-                        var total = 0
-                        while (true) {
-                            val n = reader.read(buf)
-                            if (n < 0) break
-                            total += n
-                            if (total > 15_000_000) break // 15MB safety cap
-                            sb.append(buf, 0, n)
-                        }
-                        sb.toString()
-                    }.orEmpty()
+                content = readImportText(context, uri)
             } catch (_: Exception) {
                 content = ""
             }
             withContext(Dispatchers.Main) {
                 portalFileName = displayName
                 viewModel.importPortalHtml(content, clearExisting = false)
+            }
+        }
+    }
+
+    val jsonFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val content = try { readImportText(context, uri) } catch (_: Exception) { "" }
+            withContext(Dispatchers.Main) {
+                viewModel.importData(content, isJson = true, clearExisting = false)
+            }
+        }
+    }
+
+    val csvFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val content = try { readImportText(context, uri) } catch (_: Exception) { "" }
+            withContext(Dispatchers.Main) {
+                viewModel.importData(content, isJson = false, clearExisting = false)
             }
         }
     }
@@ -589,7 +631,7 @@ fun SettingsScreen(
 
                 // Quick Sample Loader
                 Button(
-                    onClick = { viewModel.loadSampleData(clearExisting = true) },
+                    onClick = { showLoadSampleDialog = true },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp)
@@ -606,7 +648,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
-                        onClick = { showImportJsonDialog = true },
+                        onClick = { jsonFilePicker.launch("application/json") },
                         modifier = Modifier
                             .weight(1f)
                             .height(42.dp)
@@ -615,11 +657,11 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.DataObject, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("ورود JSON", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                        Text("انتخاب فایل JSON", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
                     }
 
                     OutlinedButton(
-                        onClick = { showImportCsvDialog = true },
+                        onClick = { csvFilePicker.launch("text/*") },
                         modifier = Modifier
                             .weight(1f)
                             .height(42.dp)
@@ -628,7 +670,19 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.TableView, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("ورود CSV", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                        Text("انتخاب فایل CSV", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    TextButton(onClick = { showImportJsonDialog = true }) {
+                        Text("چسباندن متن JSON", fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { showImportCsvDialog = true }) {
+                        Text("چسباندن متن CSV", fontSize = 11.sp)
                     }
                 }
 
@@ -683,13 +737,13 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "پشتیبان‌گیری و خروجی (Export)",
+                    text = "خروجی دروس و گروه‌ها (Export)",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Text(
-                    text = "اطلاعات ذخیره شده روی گوشی را مشاهده یا به صورت فرمت JSON خروجی بگیرید.",
+                    text = "از دروس و گروه‌ها خروجی JSON بگیرید. جزوات و فایل‌های پیوست در این خروجی قرار نمی‌گیرند.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -775,6 +829,11 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("خالی کردن برنامه هفتگی (حفظ لیست دروس)", fontWeight = FontWeight.SemiBold)
                 }
+                Text(
+                    text = "جزوات حذف نمی‌شوند، اما تا زمان نهایی‌کردن دوبارهٔ درس‌ها در بخش جزوات نمایش داده نخواهند شد.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -825,6 +884,28 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
     }
 
+    // Confirmation dialog: sample data intentionally replaces the current catalog.
+    if (showLoadSampleDialog) {
+        AlertDialog(
+            onDismissRequest = { showLoadSampleDialog = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("بارگذاری دادهٔ نمونه", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+            text = { Text("بارگذاری دادهٔ نمونه، تمام درس‌ها، گروه‌ها، برنامهٔ فعلی و جزوات شما را جایگزین می‌کند. آیا ادامه می‌دهید؟") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.loadSampleData(clearExisting = true)
+                        showLoadSampleDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("بله، جایگزین کن") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLoadSampleDialog = false }) { Text("انصراف") }
+            }
+        )
+    }
+
     // Confirmation Dialog for Delete All
     if (showDeleteAllDialog) {
         AlertDialog(
@@ -838,7 +919,7 @@ fun SettingsScreen(
             },
             text = {
                 Text(
-                    text = "آیا مطمئن هستید که می‌خواهید تمام دروس، گروه‌ها و برنامه‌های هفتگی را حذف کنید؟ این عمل غیرقابل بازگشت است.",
+                    text = "آیا مطمئن هستید که می‌خواهید تمام دروس، گروه‌ها، برنامه‌های هفتگی و جزوات را حذف کنید؟ این عمل غیرقابل بازگشت است.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -1052,6 +1133,7 @@ private fun EditProfileDialog(
     var major by remember { mutableStateOf(initialMajor) }
     var semester by remember { mutableStateOf(initialSemester) }
     var creditTarget by remember { mutableStateOf(initialCreditTarget.toString()) }
+    var creditTargetError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1100,11 +1182,14 @@ private fun EditProfileDialog(
                     onValueChange = { input ->
                         if (input.all { it.isDigit() } && input.length <= 2) {
                             creditTarget = input
+                            creditTargetError = null
                         }
                     },
                     label = { Text("سقف واحد هدف (ترم)") },
                     placeholder = { Text("۲۰") },
                     singleLine = true,
+                    isError = creditTargetError != null,
+                    supportingText = { creditTargetError?.let { Text(it) } },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -1112,8 +1197,12 @@ private fun EditProfileDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val targetInt = creditTarget.toIntOrNull() ?: 20
-                    onSave(name, major, semester, targetInt)
+                    val targetInt = creditTarget.normalizeDigitsForNumber().toIntOrNull()
+                    if (targetInt == null || targetInt !in 1..24) {
+                        creditTargetError = "سقف واحد باید عددی بین ۱ تا ۲۴ باشد."
+                    } else {
+                        onSave(name, major, semester, targetInt)
+                    }
                 }
             ) {
                 Text("ذخیره")

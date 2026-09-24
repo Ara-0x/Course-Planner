@@ -341,7 +341,7 @@ fun ScheduleScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(onClick = { viewModel.previousCombination() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "برنامهٔ قبلی")
                             }
 
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -376,7 +376,7 @@ fun ScheduleScreen(
                             }
 
                             IconButton(onClick = { viewModel.nextCombination() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "برنامهٔ بعدی")
                             }
                         }
 
@@ -419,21 +419,21 @@ fun ScheduleScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             MetricBox(
-                                title = "فاصله خالی (گپ)",
+                                title = "گپ کلاسی",
                                 value = if (currentScored.totalGapMinutes == 0) "۰ دقیقه" else "${currentScored.totalGapMinutes} دقیقه",
                                 subtitle = if (currentScored.totalGapMinutes == 0) "پشت سر هم" else "زمان انتظار",
                                 icon = Icons.Default.HourglassEmpty,
                                 modifier = Modifier.weight(1f)
                             )
                             MetricBox(
-                                title = "روزهای کلاس",
+                                title = "روزهای حضور",
                                 value = "${currentScored.activeDaysCount} روز",
                                 subtitle = "در طول هفته",
                                 icon = Icons.Default.CalendarMonth,
                                 modifier = Modifier.weight(1f)
                             )
                             MetricBox(
-                                title = "ساعات کلاسی",
+                                title = "ساعت کلاس",
                                 value = String.format("%.1f", currentScored.totalWeeklyHours),
                                 subtitle = "ساعت در هفته",
                                 icon = Icons.Default.Schedule,

@@ -90,6 +90,12 @@ fun HomeScreen(
     val metrics by viewModel.enrolledMetrics.collectAsStateWithLifecycle()
     val preferences by viewModel.userPreferences.collectAsStateWithLifecycle()
     val allDocs by viewModel.documentsWithCourse.collectAsStateWithLifecycle()
+    // The Documents screen intentionally exposes material only for finalized
+    // courses, so the dashboard must use that same scope for its badge.
+    val visibleDocumentCount = remember(allDocs, enrolledSections) {
+        val enrolledCourseIds = enrolledSections.map { it.course.id }.toSet()
+        allDocs.count { it.course.id in enrolledCourseIds }
+    }
     val scrollState = rememberScrollState()
 
     var showExamSchedule by remember { mutableStateOf(false) }
@@ -224,66 +230,74 @@ fun HomeScreen(
             }
         }
 
-        // Conflict Alert or All Clear Banner
-        ConflictBanner(
-            conflicts = conflicts,
-            hasEnrolledCourses = enrolledSections.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth()
-        )
+        // A first-time user needs the guided next step, not four zero-value
+        // cards and a second empty-state message.
+        if (enrolledSections.isNotEmpty()) {
+            ConflictBanner(
+                conflicts = conflicts,
+                hasEnrolledCourses = true,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        // Metrics Grid (4 modern cards with colorful icon backdrops)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            ModernMetricCard(
-                title = "تعداد دروس",
-                value = "${metrics.totalCourses}",
-                unit = "درس",
-                 icon = Icons.AutoMirrored.Filled.MenuBook,
-                accentColor = Color(0xFF2563EB),
-                modifier = Modifier.weight(1f)
-            )
-            ModernMetricCard(
-                title = "مجموع واحدها",
-                value = "${metrics.totalCredits}",
-                unit = "واحد",
-                icon = Icons.Default.CalendarMonth,
-                accentColor = Color(0xFF0D9488),
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            ModernMetricCard(
-                title = "روزهای کلاسی",
-                value = "${metrics.activeDaysCount}",
-                unit = "روز در هفته",
-                icon = Icons.Default.DateRange,
-                accentColor = Color(0xFF8B5CF6),
-                modifier = Modifier.weight(1f)
-            )
-            ModernMetricCard(
-                title = "زمان مرده (گپ)",
-                value = if (metrics.totalGapMinutes == 0) "۰" else "${metrics.totalGapMinutes}",
-                unit = "دقیقه",
-                icon = Icons.Default.Schedule,
-                accentColor = if (metrics.totalGapMinutes == 0) Color(0xFF10B981) else Color(0xFFF59E0B),
-                modifier = Modifier.weight(1f)
-            )
+            // Metrics Grid (4 modern cards with colorful icon backdrops)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ModernMetricCard(
+                    title = "تعداد دروس",
+                    value = "${metrics.totalCourses}",
+                    unit = "درس",
+                    icon = Icons.AutoMirrored.Filled.MenuBook,
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                ModernMetricCard(
+                    title = "مجموع واحدها",
+                    value = "${metrics.totalCredits}",
+                    unit = "واحد",
+                    icon = Icons.Default.CalendarMonth,
+                    accentColor = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ModernMetricCard(
+                    title = "روزهای کلاسی",
+                    value = "${metrics.activeDaysCount}",
+                    unit = "روز در هفته",
+                    icon = Icons.Default.DateRange,
+                    accentColor = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.weight(1f)
+                )
+                ModernMetricCard(
+                    title = "زمان مرده (گپ)",
+                    value = if (metrics.totalGapMinutes == 0) "۰" else "${metrics.totalGapMinutes}",
+                    unit = "دقیقه",
+                    icon = Icons.Default.Schedule,
+                    accentColor = if (metrics.totalGapMinutes == 0) {
+                        MaterialTheme.colorScheme.secondary
+                    } else {
+                        MaterialTheme.colorScheme.tertiary
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
-        // Quick Action Buttons
-        Row(
+        // Stack the primary actions so their Persian labels remain readable on
+        // narrow phones instead of competing for half of the screen each.
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Button(
                 onClick = { viewModel.navigateTo(AppDestination.COURSES) },
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxWidth()
                     .height(48.dp)
                     .testTag("home_select_courses_button"),
                 shape = RoundedCornerShape(14.dp),
@@ -301,7 +315,7 @@ fun HomeScreen(
             OutlinedButton(
                 onClick = { viewModel.navigateTo(AppDestination.SCHEDULE) },
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxWidth()
                     .height(48.dp)
                     .testTag("home_auto_schedule_button"),
                 shape = RoundedCornerShape(14.dp),
@@ -368,7 +382,11 @@ fun HomeScreen(
                             softWrap = false
                         )
                         Text(
-                            text = if (allDocs.isEmpty()) "ثبت خلاصه درس، نمونه سوال و فایل‌های کلاسی" else "${allDocs.size} جزوه و سند ثبت شده به تفکیک دروس",
+                            text = when {
+                                enrolledSections.isEmpty() -> "پس از نهایی‌کردن برنامه، جزوات هر درس اینجا در دسترس است"
+                                visibleDocumentCount == 0 -> "ثبت خلاصه درس، نمونه سوال و فایل‌های کلاسی"
+                                else -> "$visibleDocumentCount جزوه و سند ثبت شده به تفکیک دروس"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -429,14 +447,14 @@ fun HomeScreen(
                         modifier = Modifier.padding(horizontal = 8.dp)
                     )
 
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
                             onClick = { viewModel.navigateTo(AppDestination.COURSES) },
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
                                 .height(40.dp),
                             shape = RoundedCornerShape(10.dp)
                         ) {
@@ -448,7 +466,7 @@ fun HomeScreen(
                         OutlinedButton(
                             onClick = { viewModel.navigateTo(AppDestination.SETTINGS) },
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
                                 .height(40.dp),
                             shape = RoundedCornerShape(10.dp)
                         ) {

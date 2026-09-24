@@ -35,11 +35,11 @@ fun createCustomColorScheme(theme: AppColorTheme, isDark: Boolean): ColorScheme 
     } else {
         lightColorScheme(
             primary = theme.primaryColor,
-            onPrimary = OnPrimaryLight,
+            onPrimary = theme.onPrimaryColor,
             primaryContainer = theme.primaryContainerColor,
             onPrimaryContainer = OnPrimaryContainerLight,
             secondary = theme.secondaryColor,
-            onSecondary = OnSecondaryLight,
+            onSecondary = theme.onSecondaryColor,
             secondaryContainer = SecondaryContainerLight,
             onSecondaryContainer = OnSecondaryContainerLight,
             surface = SurfaceLight,

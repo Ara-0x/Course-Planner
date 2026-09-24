@@ -49,7 +49,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,7 +63,8 @@ import ir.courseplanner.app.data.model.ClassSession
 import ir.courseplanner.app.data.model.SectionWithDetails
 import ir.courseplanner.app.data.model.WeekType
 import ir.courseplanner.app.data.preferences.TimetableDensity
-import ir.courseplanner.app.ui.theme.CourseColorList
+import ir.courseplanner.app.ui.theme.CourseColorListDark
+import ir.courseplanner.app.ui.theme.CourseColorListLight
 
 data class TimetableItem(
     val section: SectionWithDetails,
@@ -85,14 +90,24 @@ fun WeeklyTimetable(
     showThursday: Boolean = true,
     density: TimetableDensity = TimetableDensity.STANDARD
 ) {
+    // A six-day grid needs horizontal scrolling on a phone. Start with the
+    // focused day view there, while retaining the full grid as one tap away.
+    val isCompactScreen = LocalConfiguration.current.screenWidthDp < 600
     var selectedDay by remember { mutableStateOf(initialDay) }
-    var viewMode by remember { mutableStateOf("grid") } // "grid" or "day"
+    var viewMode by remember(isCompactScreen) {
+        mutableStateOf(if (isCompactScreen) "day" else "grid")
+    } // "grid" or "day"
     var inspectItem by remember { mutableStateOf<TimetableItem?>(null) }
 
     // Map each course code to a stable distinct color
+    val courseColors = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
+        CourseColorListDark
+    } else {
+        CourseColorListLight
+    }
     val uniqueCodes = sections.map { it.courseCode }.distinct()
     val colorMap = uniqueCodes.mapIndexed { idx, code ->
-        code to CourseColorList[idx % CourseColorList.size]
+        code to courseColors[idx % courseColors.size]
     }.toMap()
 
     val allItems = sections.flatMap { sec ->
@@ -551,6 +566,9 @@ private fun ClassBlock(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics {
+                contentDescription = "${item.section.courseName}، ${item.session.startTime} تا ${item.session.endTime}"
+            }
             .clickable { onClick() },
         shape = RoundedCornerShape(8.dp),
         color = item.color.copy(alpha = 0.12f),
@@ -683,103 +701,82 @@ private fun TimetableDayView(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                     slotItems.forEach { item ->
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(2.dp, RoundedCornerShape(16.dp))
-                            .clickable { onItemClick(item) },
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.2.dp,
-                            item.color.copy(alpha = 0.4f)
-                        )
-                    ) {
-                        Row(
+                        Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Left accent color bar
-                            Box(
-                                modifier = Modifier
-                                    .width(4.dp)
-                                    .height(48.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(item.color)
+                                .shadow(2.dp, RoundedCornerShape(16.dp))
+                                .clickable { onItemClick(item) },
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.2.dp,
+                                item.color.copy(alpha = 0.4f)
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Left accent color bar
+                                Box(
+                                    modifier = Modifier
+                                        .width(4.dp)
+                                        .height(48.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(item.color)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
 
-                            // Course info
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = item.section.courseName,
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false),
-                                        softWrap = false
-                                    )
-                                    if (item.session.weekType != WeekType.EVERY_WEEK) {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = item.color.copy(alpha = 0.15f)
-                                        ) {
-                                            Text(
-                                                text = item.session.weekType.titleFa,
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-                                                color = item.color,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                softWrap = false
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                // Course info
+                                Column(modifier = Modifier.weight(1f)) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f, fill = false)
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Icon(
-                                            Icons.Default.Person,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(15.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = item.section.instructor.ifBlank { "استاد نامشخص" },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            text = item.section.courseName,
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false),
                                             softWrap = false
                                         )
+                                        if (item.session.weekType != WeekType.EVERY_WEEK) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = item.color.copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = item.session.weekType.titleFa,
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                                    color = item.color,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
                                     }
-                                    if (item.session.location.isNotBlank()) {
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             modifier = Modifier.weight(1f, fill = false)
                                         ) {
                                             Icon(
-                                                Icons.Default.LocationOn,
+                                                Icons.Default.Person,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(15.dp),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                text = item.session.location,
+                                                text = item.section.instructor.ifBlank { "استاد نامشخص" },
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
@@ -787,37 +784,59 @@ private fun TimetableDayView(
                                                 softWrap = false
                                             )
                                         }
+                                        if (item.session.location.isNotBlank()) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.LocationOn,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(15.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = item.session.location,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                            }
 
-                            Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
 
-                            // Time badge on right
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = item.color.copy(alpha = 0.12f),
-                                border = androidx.compose.foundation.BorderStroke(0.8.dp, item.color.copy(alpha = 0.3f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                // Time badge on right
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = item.color.copy(alpha = 0.12f),
+                                    border = androidx.compose.foundation.BorderStroke(0.8.dp, item.color.copy(alpha = 0.3f))
                                 ) {
-                                    Icon(
-                                        Icons.Default.Schedule,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = item.color
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "${item.session.startTime} تا ${item.session.endTime}",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = item.color,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        softWrap = false
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Schedule,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = item.color
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "${item.session.startTime} تا ${item.session.endTime}",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = item.color,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }

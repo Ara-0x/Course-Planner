@@ -56,17 +56,18 @@ val WarningAmberBgLight = Color(0xFFFFFBEB)
 val WarningAmberDark = Color(0xFFFBBF24)
 val WarningAmberBgDark = Color(0xFF451A03)
 
-// Course Accent Palette (Harmonious, distinct, legible for schedule items)
-val CourseColorList = listOf(
-    Color(0xFF3B82F6), // Royal Blue
-    Color(0xFF10B981), // Emerald Teal
-    Color(0xFF8B5CF6), // Violet
-    Color(0xFFF59E0B), // Amber
-    Color(0xFFEC4899), // Rose Pink
-    Color(0xFF06B6D4), // Cyan
-    Color(0xFF6366F1), // Indigo
-    Color(0xFF14B8A6), // Turquoise
-    Color(0xFFF97316), // Warm Coral
-    Color(0xFF84CC16)  // Lime Leaf
+// Course accent palettes. The light variants are deliberately deeper so the
+// course title stays readable on a white timetable; the dark variants retain
+// the brighter, high-contrast colours needed on the navy surface.
+val CourseColorListLight = listOf(
+    Color(0xFF1D4ED8), Color(0xFF047857), Color(0xFF6D28D9), Color(0xFFB45309),
+    Color(0xFFBE185D), Color(0xFF0E7490), Color(0xFF4338CA), Color(0xFF0F766E),
+    Color(0xFFC2410C), Color(0xFF4D7C0F)
+)
+
+val CourseColorListDark = listOf(
+    Color(0xFF60A5FA), Color(0xFF34D399), Color(0xFFA78BFA), Color(0xFFFBBF24),
+    Color(0xFFFB7185), Color(0xFF22D3EE), Color(0xFF818CF8), Color(0xFF2DD4BF),
+    Color(0xFFFB923C), Color(0xFFA3E635)
 )
 
