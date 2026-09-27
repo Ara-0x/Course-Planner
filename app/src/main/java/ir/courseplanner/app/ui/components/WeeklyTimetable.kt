@@ -46,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -63,6 +64,7 @@ import ir.courseplanner.app.data.model.ClassSession
 import ir.courseplanner.app.data.model.SectionWithDetails
 import ir.courseplanner.app.data.model.WeekType
 import ir.courseplanner.app.data.preferences.TimetableDensity
+import ir.courseplanner.app.engine.ScheduleEngine
 import ir.courseplanner.app.ui.theme.CourseColorListDark
 import ir.courseplanner.app.ui.theme.CourseColorListLight
 
@@ -88,7 +90,12 @@ fun WeeklyTimetable(
     modifier: Modifier = Modifier,
     initialDay: Int = 0,
     showThursday: Boolean = true,
-    density: TimetableDensity = TimetableDensity.STANDARD
+    density: TimetableDensity = TimetableDensity.STANDARD,
+    /**
+     * Academic week parity right now (null when the semester start is unset).
+     * Sessions that do not meet this week are dimmed, never hidden.
+     */
+    currentParity: ScheduleEngine.WeekParity? = null
 ) {
     // A six-day grid needs horizontal scrolling on a phone. Start with the
     // focused day view there, while retaining the full grid as one tap away.
@@ -207,6 +214,15 @@ fun WeeklyTimetable(
             }
         }
 
+        if (currentParity != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "هفته جاری آموزشی: ${currentParity.titleFa} • کلاس‌های کم‌رنگ این هفته تشکیل نمی‌شوند",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
+
         Spacer(modifier = Modifier.height(10.dp))
 
         if (sections.isEmpty()) {
@@ -247,6 +263,7 @@ fun WeeklyTimetable(
                         items = allItems,
                         showThursday = showThursday,
                         density = density,
+                        currentParity = currentParity,
                         onItemClick = { inspectItem = it }
                     )
                 } else {
@@ -254,6 +271,7 @@ fun WeeklyTimetable(
                         items = allItems,
                         selectedDay = selectedDay,
                         showThursday = showThursday,
+                        currentParity = currentParity,
                         onDayChange = { selectedDay = it },
                         onItemClick = { inspectItem = it }
                     )
@@ -384,6 +402,7 @@ private fun TimetableGridView(
     items: List<TimetableItem>,
     showThursday: Boolean = true,
     density: TimetableDensity = TimetableDensity.STANDARD,
+    currentParity: ScheduleEngine.WeekParity? = null,
     onItemClick: (TimetableItem) -> Unit
 ) {
     val hasThursdayClasses = items.any { it.session.dayOfWeek == 5 }
@@ -542,7 +561,11 @@ private fun TimetableGridView(
                                             ClassBlock(
                                                 item = item,
                                                 onClick = { onItemClick(item) },
-                                                isMultiple = matchingItems.size > 1
+                                                isMultiple = matchingItems.size > 1,
+                                                dimmed = !ScheduleEngine.occursInWeek(
+                                                    item.session,
+                                                    currentParity
+                                                )
                                             )
                                         }
                                     }
@@ -560,11 +583,13 @@ private fun TimetableGridView(
 private fun ClassBlock(
     item: TimetableItem,
     onClick: () -> Unit,
-    isMultiple: Boolean = false
+    isMultiple: Boolean = false,
+    dimmed: Boolean = false
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (dimmed) 0.45f else 1f)
             .semantics {
                 contentDescription = "${item.section.courseName}، ${item.session.startTime} تا ${item.session.endTime}"
             }
@@ -624,6 +649,7 @@ private fun TimetableDayView(
     items: List<TimetableItem>,
     selectedDay: Int,
     showThursday: Boolean = true,
+    currentParity: ScheduleEngine.WeekParity? = null,
     onDayChange: (Int) -> Unit,
     onItemClick: (TimetableItem) -> Unit
 ) {
@@ -703,6 +729,10 @@ private fun TimetableDayView(
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .alpha(
+                                    if (ScheduleEngine.occursInWeek(item.session, currentParity)) 1f
+                                    else 0.45f
+                                )
                                 .shadow(2.dp, RoundedCornerShape(16.dp))
                                 .clickable { onItemClick(item) },
                             shape = RoundedCornerShape(16.dp),

@@ -27,11 +27,13 @@ import ir.courseplanner.app.engine.OptimizationPreference
 import ir.courseplanner.app.engine.ScheduleEngine
 import ir.courseplanner.app.engine.ScheduleMetrics
 import ir.courseplanner.app.engine.ScoredSchedule
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -163,7 +165,7 @@ class CoursePlannerViewModel @Inject constructor(
                 null
             }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Document Filters
     private val _selectedDocCourseId = MutableStateFlow<Long?>(null)
@@ -198,7 +200,7 @@ class CoursePlannerViewModel @Inject constructor(
 
             matchesCourse && matchesCategory && matchesBookmarked && matchesQuery
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Filtered courses: text/department/status/sort first, then the extra
     // catalog filters (units, degree, day, has-sessions). Two typed stages
@@ -234,7 +236,7 @@ class CoursePlannerViewModel @Inject constructor(
             CourseSortOrder.CREDITS_DESC -> filtered.sortedByDescending { it.course.credits }
             CourseSortOrder.CODE -> filtered.sortedBy { it.course.code }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val filteredCourses: StateFlow<List<CourseWithSections>> = combine(
         baseFilteredCourses,
@@ -249,21 +251,24 @@ class CoursePlannerViewModel @Inject constructor(
                 (day == null || courseHasSessionOnDay(cws, day)) &&
                 (!withSessions || courseHasAnySession(cws))
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Enrolled sections conflicts (definite only — exam same-day unknowns are warnings).
     val enrolledConflicts: StateFlow<List<Conflict>> = enrolledSections
         .map { ScheduleEngine.findAllConflicts(it) }
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Same exam day with incomplete times — shown as warnings, never blocking. */
     val enrolledExamWarnings: StateFlow<List<Conflict>> = enrolledSections
         .map { ScheduleEngine.findExamWarnings(it) }
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Enrolled metrics
     val enrolledMetrics: StateFlow<ScheduleMetrics> = enrolledSections
         .map { ScheduleEngine.computeMetrics(it) }
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ScheduleMetrics(0, 0, 0, 0f, 0))
 
     // Schedule Generator State
@@ -358,6 +363,14 @@ class CoursePlannerViewModel @Inject constructor(
 
     fun setTimetableDensity(density: TimetableDensity) {
         preferencesManager.setTimetableDensity(density)
+    }
+
+    fun setSemesterStartEpochDay(epochDay: Long?) {
+        preferencesManager.setSemesterStartEpochDay(epochDay)
+    }
+
+    fun setFirstWeekIsOdd(firstWeekIsOdd: Boolean) {
+        preferencesManager.setFirstWeekIsOdd(firstWeekIsOdd)
     }
 
     fun setOptimizationPreference(preference: OptimizationPreference) {

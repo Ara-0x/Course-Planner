@@ -246,10 +246,21 @@ fun HomeScreen(
             val nextClass = remember(enrolledSections) {
                 ScheduleEngine.nextUpcomingSession(enrolledSections, todayIdx, nowMinutes)
             }
+            val weekInfo = remember(
+                preferences.semesterStartEpochDay,
+                preferences.firstWeekIsOdd
+            ) {
+                ScheduleEngine.academicWeek(
+                    ir.courseplanner.app.util.JalaliDate.todayEpochDay(),
+                    preferences.semesterStartEpochDay,
+                    preferences.firstWeekIsOdd
+                )
+            }
             TodayNextCard(
                 todayIdx = todayIdx,
                 todaysClasses = todaysClasses,
                 nextClass = nextClass,
+                weekLabel = weekInfo?.let { "هفته ${it.number} • ${it.parity.titleFa}" },
                 onOpenSchedule = { viewModel.navigateTo(AppDestination.SCHEDULE) }
             )
         }
@@ -692,10 +703,21 @@ fun HomeScreen(
         }
 
         // Weekly Timetable Component
+        val homeParity = remember(
+            preferences.semesterStartEpochDay,
+            preferences.firstWeekIsOdd
+        ) {
+            ScheduleEngine.academicWeek(
+                ir.courseplanner.app.util.JalaliDate.todayEpochDay(),
+                preferences.semesterStartEpochDay,
+                preferences.firstWeekIsOdd
+            )?.parity
+        }
         WeeklyTimetable(
             sections = enrolledSections,
             showThursday = preferences.showThursday,
             density = preferences.timetableDensity,
+            currentParity = homeParity,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -712,6 +734,7 @@ private fun TodayNextCard(
     todayIdx: Int,
     todaysClasses: List<ScheduleEngine.UpcomingSession>,
     nextClass: ScheduleEngine.UpcomingSession?,
+    weekLabel: String?,
     onOpenSchedule: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -742,17 +765,35 @@ private fun TodayNextCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                if (todaysClasses.isNotEmpty()) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                    ) {
-                        Text(
-                            text = "${todaysClasses.size} کلاس",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (weekLabel != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = weekLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                    if (todaysClasses.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "${todaysClasses.size} کلاس",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
                     }
                 }
             }

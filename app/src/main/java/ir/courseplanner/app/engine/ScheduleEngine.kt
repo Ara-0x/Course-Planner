@@ -296,9 +296,48 @@ object ScheduleEngine {
         return listOf(top.copy(tags = listOf("پیشنهاد برتر هوشمند") + top.tags)) + ranked.drop(1)
     }
 
+    /** Academic week parity, counted from the semester start (week 1 = first 7 days). */
+    enum class WeekParity(val titleFa: String) {
+        EVEN("زوج"),
+        ODD("فرد")
+    }
+
+    /** Which academic week [todayEpochDay] falls in, or null when unknowable. */
+    data class AcademicWeek(
+        /** 1-based week number since the semester start. */
+        val number: Int,
+        val parity: WeekParity
+    )
+
+    fun academicWeek(
+        todayEpochDay: Long,
+        semesterStartEpochDay: Long?,
+        firstWeekIsOdd: Boolean
+    ): AcademicWeek? {
+        if (semesterStartEpochDay == null || todayEpochDay < semesterStartEpochDay) return null
+        val weekNumber = ((todayEpochDay - semesterStartEpochDay) / 7 + 1).toInt()
+        val isEven = if (firstWeekIsOdd) weekNumber % 2 == 0 else weekNumber % 2 == 1
+        return AcademicWeek(weekNumber, if (isEven) WeekParity.EVEN else WeekParity.ODD)
+    }
+
+    /** True when this session actually meets in a week of the given parity. */
+    fun occursInWeek(session: ClassSession, parity: WeekParity?): Boolean {
+        if (parity == null) return true
+        return when (session.weekType) {
+            WeekType.EVERY_WEEK -> true
+            WeekType.EVEN_WEEKS -> parity == WeekParity.EVEN
+            WeekType.ODD_WEEKS -> parity == WeekParity.ODD
+        }
+    }
+
     /**
      * Analyzes idle gap time between classes on each day.
      * Returns total gap minutes across the week.
+     *
+     * Parity-aware: a day mixing weekly and biweekly sessions is scored as the
+     * average of its even-week and odd-week gaps. Example — weekly 8–10, even
+     * 10–12, weekly 12–14: even weeks have no gap, odd weeks have a 120-minute
+     * dead window, so the honest weekly figure is 60, not 0.
      */
     fun calculateTotalGaps(sections: List<SectionWithDetails>): Int {
         val sessionsByDay = sections.flatMap { it.sessions }.groupBy { it.dayOfWeek }
@@ -306,16 +345,52 @@ object ScheduleEngine {
 
         for ((_, daySessions) in sessionsByDay) {
             if (daySessions.size <= 1) continue
-            val sorted = daySessions.sortedBy { it.startMinutes }
-            for (i in 0 until sorted.size - 1) {
-                val currentEnd = sorted[i].endMinutes
-                val nextStart = sorted[i + 1].startMinutes
-                if (nextStart > currentEnd) {
-                    totalGapMinutes += (nextStart - currentEnd)
+            if (daySessions.none { it.weekType != WeekType.EVERY_WEEK }) {
+                totalGapMinutes += gapOf(daySessions)
+            } else {
+                val evenSet = daySessions.filter {
+                    it.weekType == WeekType.EVERY_WEEK || it.weekType == WeekType.EVEN_WEEKS
                 }
+                val oddSet = daySessions.filter {
+                    it.weekType == WeekType.EVERY_WEEK || it.weekType == WeekType.ODD_WEEKS
+                }
+                totalGapMinutes += (gapOf(evenSet) + gapOf(oddSet)) / 2
             }
         }
         return totalGapMinutes
+    }
+
+    private fun gapOf(daySessions: List<ClassSession>): Int {
+        if (daySessions.size <= 1) return 0
+        val sorted = daySessions.sortedBy { it.startMinutes }
+        var gap = 0
+        for (i in 0 until sorted.size - 1) {
+            val currentEnd = sorted[i].endMinutes
+            val nextStart = sorted[i + 1].startMinutes
+            if (nextStart > currentEnd) {
+                gap += (nextStart - currentEnd)
+            }
+        }
+        return gap
+    }
+
+    /**
+     * True average class minutes per week: biweekly sessions count half, since
+     * they meet every other week. Days without parity sessions are unchanged.
+     */
+    fun averageWeeklyMinutes(sections: List<SectionWithDetails>): Int {
+        val all = sections.flatMap { it.sessions }
+        if (all.none { it.weekType != WeekType.EVERY_WEEK }) {
+            return all.sumOf { maxOf(0, it.endMinutes - it.startMinutes) }
+        }
+        fun minutesOf(parity: WeekParity): Int {
+            return all.filter {
+                it.weekType == WeekType.EVERY_WEEK ||
+                    (parity == WeekParity.EVEN && it.weekType == WeekType.EVEN_WEEKS) ||
+                    (parity == WeekParity.ODD && it.weekType == WeekType.ODD_WEEKS)
+            }.sumOf { maxOf(0, it.endMinutes - it.startMinutes) }
+        }
+        return (minutesOf(WeekParity.EVEN) + minutesOf(WeekParity.ODD)) / 2
     }
 
     /**
@@ -334,12 +409,7 @@ object ScheduleEngine {
         val totalGaps = calculateTotalGaps(schedule)
         val earlyMorningCount = allSessions.count { it.startMinutes <= 480 } // 8:00 AM or earlier
 
-        var totalMinutes = 0
-        for (sec in schedule) {
-            for (sess in sec.sessions) {
-                totalMinutes += maxOf(0, sess.endMinutes - sess.startMinutes)
-            }
-        }
+        val totalMinutes = averageWeeklyMinutes(schedule)
 
         // Base score starts at 100; every deduction below is recorded in the
         // breakdown so the UI can explain exactly why a schedule won.
@@ -502,12 +572,7 @@ object ScheduleEngine {
         val totalCredits = sections.sumOf { it.course.credits }
         val activeDays = sections.flatMap { it.sessions }.map { it.dayOfWeek }.toSet().size
         val totalGaps = calculateTotalGaps(sections)
-        var totalMinutes = 0
-        for (sec in sections) {
-            for (sess in sec.sessions) {
-                totalMinutes += maxOf(0, sess.endMinutes - sess.startMinutes)
-            }
-        }
+        val totalMinutes = averageWeeklyMinutes(sections)
         return ScheduleMetrics(
             totalCourses = sections.size,
             totalCredits = totalCredits,

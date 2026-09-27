@@ -437,10 +437,21 @@ fun ScheduleScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         // The weekly schedule itself is the hero of this screen.
+                        val resultParity = remember(
+                            preferences.semesterStartEpochDay,
+                            preferences.firstWeekIsOdd
+                        ) {
+                            ir.courseplanner.app.engine.ScheduleEngine.academicWeek(
+                                ir.courseplanner.app.util.JalaliDate.todayEpochDay(),
+                                preferences.semesterStartEpochDay,
+                                preferences.firstWeekIsOdd
+                            )?.parity
+                        }
                         WeeklyTimetable(
                             sections = currentScored.schedule,
                             showThursday = preferences.showThursday,
                             density = preferences.timetableDensity,
+                            currentParity = resultParity,
                             modifier = Modifier.fillMaxWidth()
                         )
 

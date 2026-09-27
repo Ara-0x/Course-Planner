@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -154,7 +155,15 @@ data class UserPreferences(
     val semesterName: String = "نیم‌سال اول ۱۴۰۳-۱۴۰۴",
     val creditTarget: Int = 20,
     val showThursday: Boolean = true,
-    val timetableDensity: TimetableDensity = TimetableDensity.STANDARD
+    val timetableDensity: TimetableDensity = TimetableDensity.STANDARD,
+    /**
+     * First day of university classes as epoch day (days since 1970-01-01).
+     * Academic even/odd weeks are counted from here. Null = not set yet, so
+     * the app must not guess the current week parity.
+     */
+    val semesterStartEpochDay: Long? = null,
+    /** University convention: is week 1 (first 7 days) an odd week? Default true. */
+    val firstWeekIsOdd: Boolean = true
 )
 
 private const val DATASTORE_NAME = "planner_user_prefs"
@@ -213,6 +222,18 @@ class PreferencesManager @Inject constructor(
         update { it[KEY_DENSITY] = density.id }
     }
 
+    /** Null clears the stored start date (parity becomes unknown again). */
+    fun setSemesterStartEpochDay(epochDay: Long?) {
+        update {
+            if (epochDay == null) it.remove(KEY_SEMESTER_START_EPOCH_DAY)
+            else it[KEY_SEMESTER_START_EPOCH_DAY] = epochDay
+        }
+    }
+
+    fun setFirstWeekIsOdd(firstWeekIsOdd: Boolean) {
+        update { it[KEY_FIRST_WEEK_IS_ODD] = firstWeekIsOdd }
+    }
+
     suspend fun isReleaseCleanDone(): Boolean =
         dataStore.data.map { it[KEY_RELEASE_CLEAN] ?: false }.first()
 
@@ -229,7 +250,9 @@ class PreferencesManager @Inject constructor(
             semesterName = this[KEY_SEMESTER_NAME] ?: DEFAULT_SEMESTER,
             creditTarget = this[KEY_CREDIT_TARGET] ?: 20,
             showThursday = this[KEY_SHOW_THURSDAY] ?: true,
-            timetableDensity = TimetableDensity.fromId(this[KEY_DENSITY])
+            timetableDensity = TimetableDensity.fromId(this[KEY_DENSITY]),
+            semesterStartEpochDay = this[KEY_SEMESTER_START_EPOCH_DAY],
+            firstWeekIsOdd = this[KEY_FIRST_WEEK_IS_ODD] ?: true
         )
     }
 
@@ -243,6 +266,8 @@ class PreferencesManager @Inject constructor(
         private val KEY_CREDIT_TARGET = intPreferencesKey("credit_target")
         private val KEY_SHOW_THURSDAY = booleanPreferencesKey("show_thursday")
         private val KEY_DENSITY = stringPreferencesKey("timetable_density")
+        private val KEY_SEMESTER_START_EPOCH_DAY = longPreferencesKey("semester_start_epoch_day")
+        private val KEY_FIRST_WEEK_IS_ODD = booleanPreferencesKey("first_week_is_odd")
         private val KEY_RELEASE_CLEAN = booleanPreferencesKey("release_clean_courses_v1")
     }
 }

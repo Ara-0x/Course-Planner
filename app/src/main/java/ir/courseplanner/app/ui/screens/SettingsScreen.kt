@@ -88,11 +88,15 @@ import ir.courseplanner.app.BuildConfig
 import ir.courseplanner.app.data.importer.CourseImporter
 import ir.courseplanner.app.data.importer.ImportItem
 import ir.courseplanner.app.data.importer.ImportSectionItem
+import ir.courseplanner.app.data.model.ClassSession
 import ir.courseplanner.app.data.model.CourseWithSections
 import ir.courseplanner.app.data.preferences.AppColorTheme
 import ir.courseplanner.app.data.preferences.ThemeMode
 import ir.courseplanner.app.data.preferences.TimetableDensity
+import ir.courseplanner.app.engine.ScheduleEngine
 import ir.courseplanner.app.ui.CoursePlannerViewModel
+import ir.courseplanner.app.util.JalaliDate
+import ir.courseplanner.app.util.JalaliYmd
 import ir.courseplanner.app.util.TimetableExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -492,6 +496,64 @@ fun SettingsScreen(
                                 text = "${preferences.creditTarget} واحد",
                                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "شروع کلاس‌ها:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val savedStart = preferences.semesterStartEpochDay
+                                ?.let { JalaliDate.fromEpochDay(it) }
+                            Text(
+                                text = if (savedStart != null) {
+                                    val weekday = ClassSession.getDayName(
+                                        JalaliDate.appDayIndexOfEpochDay(
+                                            preferences.semesterStartEpochDay!!
+                                        )
+                                    )
+                                    "$savedStart ($weekday)"
+                                } else "تنظیم نشده",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                color = if (savedStart != null) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.outline
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "هفته جاری آموزشی:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val todayEpoch = remember { JalaliDate.todayEpochDay() }
+                            val currentWeek = remember(
+                                preferences.semesterStartEpochDay,
+                                preferences.firstWeekIsOdd
+                            ) {
+                                ScheduleEngine.academicWeek(
+                                    todayEpoch,
+                                    preferences.semesterStartEpochDay,
+                                    preferences.firstWeekIsOdd
+                                )
+                            }
+                            Text(
+                                text = when {
+                                    preferences.semesterStartEpochDay == null -> "تنظیم نشده"
+                                    currentWeek == null -> "ترم هنوز شروع نشده"
+                                    else -> "هفته ${currentWeek.number} (${currentWeek.parity.titleFa})"
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (currentWeek != null) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outline
                             )
                         }
                     }
@@ -1052,15 +1114,22 @@ MATH101,ریاضی ۱,علوم پایه,3,01,دکتر حسنی,40,1403/10/20,08:
 
     // Edit Student Profile Dialog
     if (showEditProfileDialog) {
+        val savedStart = preferences.semesterStartEpochDay?.let { JalaliDate.fromEpochDay(it) }
         EditProfileDialog(
             initialName = preferences.studentName,
             initialMajor = preferences.major,
             initialSemester = preferences.semesterName,
             initialCreditTarget = preferences.creditTarget,
+            initialSemesterStart = savedStart?.toString() ?: "",
+            initialFirstWeekIsOdd = preferences.firstWeekIsOdd,
             onDismiss = { showEditProfileDialog = false },
-            onSave = { name, major, semester, target ->
+            onSave = { name, major, semester, target, semesterStart, firstWeekIsOdd ->
                 viewModel.setStudentProfile(name, major, semester)
                 viewModel.setCreditTarget(target)
+                viewModel.setSemesterStartEpochDay(
+                    semesterStart?.let { JalaliDate.toEpochDay(it.year, it.month, it.day) }
+                )
+                viewModel.setFirstWeekIsOdd(firstWeekIsOdd)
                 showEditProfileDialog = false
             }
         )
@@ -1141,14 +1210,29 @@ private fun EditProfileDialog(
     initialMajor: String,
     initialSemester: String,
     initialCreditTarget: Int,
+    initialSemesterStart: String,
+    initialFirstWeekIsOdd: Boolean,
     onDismiss: () -> Unit,
-    onSave: (name: String, major: String, semester: String, target: Int) -> Unit
+    onSave: (
+        name: String,
+        major: String,
+        semester: String,
+        target: Int,
+        semesterStart: JalaliYmd?,
+        firstWeekIsOdd: Boolean
+    ) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
     var major by remember { mutableStateOf(initialMajor) }
     var semester by remember { mutableStateOf(initialSemester) }
     var creditTarget by remember { mutableStateOf(initialCreditTarget.toString()) }
     var creditTargetError by remember { mutableStateOf<String?>(null) }
+    var semesterStartInput by remember { mutableStateOf(initialSemesterStart) }
+    var semesterStartError by remember { mutableStateOf<String?>(null) }
+    var firstWeekIsOdd by remember { mutableStateOf(initialFirstWeekIsOdd) }
+    val parsedStart = remember(semesterStartInput) {
+        semesterStartInput.takeIf { it.isNotBlank() }?.let { JalaliDate.parse(it) }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1207,6 +1291,66 @@ private fun EditProfileDialog(
                     supportingText = { creditTargetError?.let { Text(it) } },
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                // Semester start: academic even/odd weeks are counted from here.
+                Text(
+                    text = "شروع کلاس‌های دانشگاه (برای هفته زوج/فرد)",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                OutlinedTextField(
+                    value = semesterStartInput,
+                    onValueChange = {
+                        semesterStartInput = it
+                        semesterStartError = null
+                    },
+                    label = { Text("تاریخ شروع کلاس‌ها (شمسی)") },
+                    placeholder = { Text("مثلاً: ۱۴۰۴/۰۷/۰۵") },
+                    singleLine = true,
+                    isError = semesterStartError != null,
+                    supportingText = {
+                        when {
+                            semesterStartError != null -> Text(semesterStartError!!)
+                            parsedStart != null -> {
+                                val epoch = JalaliDate.toEpochDay(
+                                    parsedStart.year, parsedStart.month, parsedStart.day
+                                )!!
+                                val weekday = ClassSession.getDayName(
+                                    JalaliDate.appDayIndexOfEpochDay(epoch)
+                                )
+                                Text("✓ $weekday، ${parsedStart}")
+                            }
+                            semesterStartInput.isNotBlank() -> Text("قالب درست: سال/ماه/روز، مثل ۱۴۰۴/۰۷/۰۵")
+                            else -> Text("خالی بماند یعنی هفته زوج/فرد نامشخص می‌ماند.")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    text = "هفته اول ترم:",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = firstWeekIsOdd,
+                        onClick = { firstWeekIsOdd = true },
+                        label = { Text("هفته فرد", fontSize = 11.5.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = !firstWeekIsOdd,
+                        onClick = { firstWeekIsOdd = false },
+                        label = { Text("هفته زوج", fontSize = 11.5.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         },
         confirmButton = {
@@ -1215,9 +1359,13 @@ private fun EditProfileDialog(
                     val targetInt = creditTarget.normalizeDigitsForNumber().toIntOrNull()
                     if (targetInt == null || targetInt !in 1..24) {
                         creditTargetError = "سقف واحد باید عددی بین ۱ تا ۲۴ باشد."
-                    } else {
-                        onSave(name, major, semester, targetInt)
+                        return@Button
                     }
+                    if (semesterStartInput.isNotBlank() && parsedStart == null) {
+                        semesterStartError = "تاریخ معتبر نیست (مثلاً ۱۴۰۴/۰۷/۰۵)."
+                        return@Button
+                    }
+                    onSave(name, major, semester, targetInt, parsedStart, firstWeekIsOdd)
                 }
             ) {
                 Text("ذخیره")

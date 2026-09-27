@@ -113,13 +113,21 @@ fun CoursesScreen(
     val allCoursesWithSections by viewModel.coursesWithSections.collectAsStateWithLifecycle()
     val allSections by viewModel.allSections.collectAsStateWithLifecycle()
     val allDocs by viewModel.documentsWithCourse.collectAsStateWithLifecycle()
+    val enrolledSections by viewModel.enrolledSections.collectAsStateWithLifecycle()
 
     var showAddCourseDialog by remember { mutableStateOf(false) }
     var courseForAddSection by remember { mutableStateOf<Course?>(null) }
     var courseToDelete by remember { mutableStateOf<Course?>(null) }
     var courseToEdit by remember { mutableStateOf<Course?>(null) }
 
-    val departments = listOf("همه") + allCoursesWithSections.map { it.course.department }.filter { it.isNotBlank() }.distinct()
+    val departments = remember(allCoursesWithSections) {
+        listOf("همه") + allCoursesWithSections.map { it.course.department }.filter { it.isNotBlank() }.distinct()
+    }
+    // Stable signature of the enrollment set: conflict checks are recomputed
+    // only when enrollments actually change, not on every recomposition.
+    val enrolledKey = remember(enrolledSections) {
+        enrolledSections.map { it.section.id }.sorted().joinToString(",")
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -549,7 +557,9 @@ fun CoursesScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                val selectedCount = allCoursesWithSections.count { it.course.isSelectedForGeneration }
+                val selectedCount = remember(allCoursesWithSections) {
+                    allCoursesWithSections.count { it.course.isSelectedForGeneration }
+                }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -633,9 +643,11 @@ fun CoursesScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             // Guide the user when the portal catalog exists but
                             // "my courses" is still empty: search a code to add.
-                            val catalogOnlyCount = allCoursesWithSections.count { cws ->
-                                !cws.course.isSelectedForGeneration &&
-                                    cws.sections.none { it.section.isEnrolled }
+                            val catalogOnlyCount = remember(allCoursesWithSections) {
+                                allCoursesWithSections.count { cws ->
+                                    !cws.course.isSelectedForGeneration &&
+                                        cws.sections.none { it.section.isEnrolled }
+                                }
                             }
                             if (allCoursesWithSections.isEmpty()) {
                                 Text(
@@ -726,10 +738,13 @@ fun CoursesScreen(
                         )
                     }
                     items(filteredCourses, key = { it.course.id }) { cws ->
-                        val docCount = allDocs.count { it.course.id == cws.course.id }
+                        val docCount = remember(allDocs, cws.course.id) {
+                            allDocs.count { it.course.id == cws.course.id }
+                        }
                         CourseCard(
                             courseWithSections = cws,
                             allSections = allSections,
+                            enrolledKey = enrolledKey,
                             docCount = docCount,
                             onOpenDocuments = {
                                 viewModel.navigateToCourseDocuments(cws.course.id)
@@ -854,6 +869,7 @@ fun CoursesScreen(
 private fun CourseCard(
     courseWithSections: CourseWithSections,
     allSections: List<SectionWithDetails>,
+    enrolledKey: String,
     docCount: Int = 0,
     onOpenDocuments: () -> Unit = {},
     onToggleSelectedForGeneration: (Boolean) -> Unit,
@@ -865,7 +881,9 @@ private fun CourseCard(
     checkConflict: (SectionWithDetails) -> ir.courseplanner.app.data.model.Conflict?
 ) {
     val course = courseWithSections.course
-    val sectionsWithDetails = allSections.filter { it.course.id == course.id }
+    val sectionsWithDetails = remember(course.id, allSections) {
+        allSections.filter { it.course.id == course.id }
+    }
 
     Surface(
         modifier = Modifier
@@ -1064,7 +1082,12 @@ private fun CourseCard(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 sectionsWithDetails.forEach { sec ->
                     val isEnrolled = sec.section.isEnrolled
-                    val conflict = if (!isEnrolled) checkConflict(sec) else null
+                    // Conflict math (pairwise session comparison + strings) is memoized:
+                    // it only re-runs when this section or the enrollment set changes,
+                    // not on every recomposition (e.g. while typing in search).
+                    val conflict = remember(sec, isEnrolled, enrolledKey) {
+                        if (!isEnrolled) checkConflict(sec) else null
+                    }
 
                     SectionItem(
                         section = sec,
