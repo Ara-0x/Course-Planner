@@ -1,7 +1,6 @@
 package ir.courseplanner.app.data.preferences
 
 import android.content.Context
-import androidx.compose.ui.graphics.Color
 import androidx.datastore.core.DataMigration
 import androidx.datastore.preferences.SharedPreferencesMigration
 import androidx.datastore.preferences.core.Preferences
@@ -29,91 +28,35 @@ import javax.inject.Singleton
 
 enum class AppColorTheme(
     val id: String,
-    val titleFa: String,
-    val primaryColor: Color,
-    val primaryContainerColor: Color,
-    val secondaryColor: Color,
-    val onPrimaryColor: Color,
-    val onSecondaryColor: Color,
-    val darkPrimaryColor: Color,
-    val darkPrimaryContainerColor: Color
+    val titleFa: String
 ) {
     INDIGO(
         id = "indigo",
         titleFa = "نیلی دانشگاهی",
-        primaryColor = Color(0xFF2563EB),
-        primaryContainerColor = Color(0xFFEFF6FF),
-        secondaryColor = Color(0xFF0D9488),
-        onPrimaryColor = Color.White,
-        onSecondaryColor = Color(0xFF0F172A),
-        darkPrimaryColor = Color(0xFF60A5FA),
-        darkPrimaryContainerColor = Color(0xFF1E3A8A)
     ),
     EMERALD(
         id = "emerald",
         titleFa = "زمردی جنگلی",
-        primaryColor = Color(0xFF059669),
-        primaryContainerColor = Color(0xFFECFDF5),
-        secondaryColor = Color(0xFF0369A1),
-        onPrimaryColor = Color(0xFF0F172A),
-        onSecondaryColor = Color.White,
-        darkPrimaryColor = Color(0xFF34D399),
-        darkPrimaryContainerColor = Color(0xFF064E3B)
     ),
     VIOLET(
         id = "violet",
         titleFa = "ارغوانی رویال",
-        primaryColor = Color(0xFF7C3AED),
-        primaryContainerColor = Color(0xFFF5F3FF),
-        secondaryColor = Color(0xFFDB2777),
-        onPrimaryColor = Color.White,
-        onSecondaryColor = Color.White,
-        darkPrimaryColor = Color(0xFFA78BFA),
-        darkPrimaryContainerColor = Color(0xFF4C1D95)
     ),
     AMBER(
         id = "amber",
         titleFa = "غروب کهربایی",
-        primaryColor = Color(0xFFD97706),
-        primaryContainerColor = Color(0xFFFFFBEB),
-        secondaryColor = Color(0xFFEA580C),
-        onPrimaryColor = Color(0xFF0F172A),
-        onSecondaryColor = Color(0xFF0F172A),
-        darkPrimaryColor = Color(0xFFFBBF24),
-        darkPrimaryContainerColor = Color(0xFF78350F)
     ),
     OCEAN(
         id = "ocean",
         titleFa = "اقیانوسی فیروزه‌ای",
-        primaryColor = Color(0xFF0891B2),
-        primaryContainerColor = Color(0xFFECFEFF),
-        secondaryColor = Color(0xFF2563EB),
-        onPrimaryColor = Color(0xFF0F172A),
-        onSecondaryColor = Color.White,
-        darkPrimaryColor = Color(0xFF22D3EE),
-        darkPrimaryContainerColor = Color(0xFF164E63)
     ),
     ROSE(
         id = "rose",
         titleFa = "یاقوت سرخ",
-        primaryColor = Color(0xFFE11D48),
-        primaryContainerColor = Color(0xFFFFF1F2),
-        secondaryColor = Color(0xFF9333EA),
-        onPrimaryColor = Color.White,
-        onSecondaryColor = Color.White,
-        darkPrimaryColor = Color(0xFFFB7185),
-        darkPrimaryContainerColor = Color(0xFF881337)
     ),
     SLATE(
         id = "slate",
         titleFa = "نوک‌مدادی مینیمال",
-        primaryColor = Color(0xFF475569),
-        primaryContainerColor = Color(0xFFF1F5F9),
-        secondaryColor = Color(0xFF0F766E),
-        onPrimaryColor = Color.White,
-        onSecondaryColor = Color.White,
-        darkPrimaryColor = Color(0xFF94A3B8),
-        darkPrimaryContainerColor = Color(0xFF1E293B)
     );
 
     companion object {

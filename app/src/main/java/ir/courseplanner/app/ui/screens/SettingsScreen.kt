@@ -8,7 +8,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +56,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -75,12 +75,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -95,6 +97,7 @@ import ir.courseplanner.app.data.preferences.ThemeMode
 import ir.courseplanner.app.data.preferences.TimetableDensity
 import ir.courseplanner.app.engine.ScheduleEngine
 import ir.courseplanner.app.ui.CoursePlannerViewModel
+import ir.courseplanner.app.ui.theme.paletteOf
 import ir.courseplanner.app.util.JalaliDate
 import ir.courseplanner.app.util.JalaliYmd
 import ir.courseplanner.app.util.TimetableExporter
@@ -324,58 +327,29 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                // 7 Color Palette Cards
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    AppColorTheme.values().forEach { theme ->
-                        val isSelected = preferences.theme == theme
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                            border = androidx.compose.foundation.BorderStroke(
-                                if (isSelected) 2.dp else 1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            ),
-                            modifier = Modifier
-                                .clickable { viewModel.setColorTheme(theme) }
-                                .padding(vertical = 2.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // Color Dot Preview
-                                Box(
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .clip(CircleShape)
-                                        .background(theme.primaryColor),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                                Column {
-                                    Text(
-                                        text = theme.titleFa,
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
+                // 7 palette cards: gradient accent + light/dark surface preview
+                val paletteThemes = AppColorTheme.values()
+                for (index in paletteThemes.indices step 2) {
+                    val second = paletteThemes.getOrNull(index + 1)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        PaletteCard(
+                            theme = paletteThemes[index],
+                            selected = preferences.theme == paletteThemes[index],
+                            onClick = { viewModel.setColorTheme(paletteThemes[index]) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (second != null) {
+                            PaletteCard(
+                                theme = second,
+                                selected = preferences.theme == second,
+                                onClick = { viewModel.setColorTheme(second) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -1377,4 +1351,108 @@ private fun EditProfileDialog(
             }
         }
     )
+}
+
+/**
+ * One selectable palette card: theme name, gradient accent dot (ticked when
+ * selected) and a miniature light/dark surface preview, so the chosen theme
+ * reads clearly without switching theme mode first.
+ */
+@Composable
+private fun PaletteCard(
+    theme: AppColorTheme,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val palette = paletteOf(theme)
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .testTag("theme_palette_${theme.id}"),
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) palette.light.primaryContainer.copy(alpha = 0.6f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+        border = androidx.compose.foundation.BorderStroke(
+            if (selected) 2.dp else 1.dp,
+            if (selected) palette.light.primary
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+        ),
+        shadowElevation = if (selected) 2.dp else 0.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Brush.horizontalGradient(palette.swatch)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (selected) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = theme.titleFa,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    PaletteModePreview(palette.light)
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    PaletteModePreview(palette.dark)
+                }
+            }
+        }
+    }
+}
+
+/** Tiny strip: a mode's surface carrying its primary/secondary/tertiary dots. */
+@Composable
+private fun PaletteModePreview(scheme: ColorScheme) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(6.dp),
+        color = scheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            scheme.outlineVariant.copy(alpha = 0.6f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(scheme.primary))
+            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(scheme.secondary))
+            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(scheme.tertiary))
+        }
+    }
 }

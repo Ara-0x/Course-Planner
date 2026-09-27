@@ -2,43 +2,11 @@ package ir.courseplanner.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Modern Light Palette (Clean, Academic Indigo/Teal with Warm Slate surfaces)
-val PrimaryLight = Color(0xFF2563EB)        // Vibrant Royal Blue / Indigo
-val OnPrimaryLight = Color(0xFFFFFFFF)
-val PrimaryContainerLight = Color(0xFFEFF6FF)
-val OnPrimaryContainerLight = Color(0xFF1E40AF)
 
-val SecondaryLight = Color(0xFF0D9488)      // Modern Teal
-val OnSecondaryLight = Color(0xFFFFFFFF)
-val SecondaryContainerLight = Color(0xFFF0FDFA)
-val OnSecondaryContainerLight = Color(0xFF115E59)
 
-val SurfaceLight = Color(0xFFFFFFFF)        // Crisp White Card Surface
-val OnSurfaceLight = Color(0xFF0F172A)
-val SurfaceVariantLight = Color(0xFFF1F5F9) // Clean Slate tint
-val OnSurfaceVariantLight = Color(0xFF475569)
-val BackgroundLight = Color(0xFFF8FAFC)     // Ultra-clean light gray/slate canvas
-val OutlineLight = Color(0xFFCBD5E1)         // borders, hairlines
-val OutlineVariantLight = Color(0xFFE2E8F0) // subtle dividers on light cards
 
-// Modern Dark Palette (Deep Space Navy with glowing accents)
-val PrimaryDark = Color(0xFF60A5FA)
-val OnPrimaryDark = Color(0xFF0B1220)
-val PrimaryContainerDark = Color(0xFF1E3A8A)
-val OnPrimaryContainerDark = Color(0xFFDBEAFE)
 
-val SecondaryDark = Color(0xFF2DD4BF)
-val OnSecondaryDark = Color(0xFF042F2C)
-val SecondaryContainerDark = Color(0xFF134E4A)
-val OnSecondaryContainerDark = Color(0xFFCCFBF1)
 
-val SurfaceDark = Color(0xFF111827)         // Deep slate surface
-val OnSurfaceDark = Color(0xFFF9FAFB)
-val SurfaceVariantDark = Color(0xFF1F2937)
-val OnSurfaceVariantDark = Color(0xFF9CA3AF)
-val BackgroundDark = Color(0xFF0B0F17)      // Midnight canvas
-val OutlineDark = Color(0xFF374151)
-val OutlineVariantDark = Color(0xFF1F2937)
 
 // Status & Indicator Colors
 val ConflictRedLight = Color(0xFFDC2626)

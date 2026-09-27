@@ -1,14 +1,17 @@
 package ir.courseplanner.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +25,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,7 +86,11 @@ import ir.courseplanner.app.ui.CoursePlannerViewModel
 import ir.courseplanner.app.ui.components.ConflictBanner
 import ir.courseplanner.app.ui.components.WeeklyTimetable
 import ir.courseplanner.app.util.TimetableExporter
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: CoursePlannerViewModel,
@@ -102,6 +111,12 @@ fun HomeScreen(
     }
     val scrollState = rememberScrollState()
 
+    // The "view weekly timetable" button in the Today hero scrolls to the real
+    // weekly timetable further down this screen instead of opening the builder.
+    val weeklyTimetableRequester = remember { BringIntoViewRequester() }
+    val homeScope = rememberCoroutineScope()
+    val timetableGlow = remember { Animatable(0f) }
+    var timetableGlowJob by remember { mutableStateOf<Job?>(null) }
     var showExamSchedule by remember { mutableStateOf(false) }
 
     val targetCredits = preferences.creditTarget.toFloat()
@@ -285,8 +300,17 @@ fun HomeScreen(
                 weekLabel = weekInfo?.let { "هفته ${it.number} • ${it.parity.titleFa}" },
                 // The next-class row itself is NOT clickable (informational only),
                 // so an ongoing class never opens the builder. This callback only
-                // drives the «مشاهده برنامه هفتگی» button inside the card.
-                onOpenSchedule = { viewModel.navigateTo(AppDestination.SCHEDULE) },
+                // drives the weekly-timetable button inside the card, which
+                // scrolls to the timetable below instead of opening the builder.
+                onOpenWeeklyTimetable = {
+                    timetableGlowJob?.cancel()
+                    timetableGlowJob = homeScope.launch {
+                        weeklyTimetableRequester.bringIntoView()
+                        timetableGlow.animateTo(1f, tween(220))
+                        delay(1_200)
+                        timetableGlow.animateTo(0f, tween(520))
+                    }
+                },
                 nowMinutes = nowMinutes
             )
         }
@@ -739,13 +763,31 @@ fun HomeScreen(
                 preferences.firstWeekIsOdd
             )?.parity
         }
-        WeeklyTimetable(
-            sections = enrolledSections,
-            showThursday = preferences.showThursday,
-            density = preferences.timetableDensity,
-            currentParity = homeParity,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(weeklyTimetableRequester)
+                .testTag("home_weekly_timetable_section")
+                .clip(RoundedCornerShape(18.dp))
+                .background(
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f * timetableGlow.value)
+                )
+                .border(
+                    width = 1.5.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(
+                        alpha = 0.15f + 0.75f * timetableGlow.value
+                    ),
+                    shape = RoundedCornerShape(18.dp)
+                )
+        ) {
+            WeeklyTimetable(
+                sections = enrolledSections,
+                showThursday = preferences.showThursday,
+                density = preferences.timetableDensity,
+                currentParity = homeParity,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
     }
@@ -761,7 +803,7 @@ private fun TodayNextCard(
     todaysClasses: List<ScheduleEngine.UpcomingSession>,
     nextClass: ScheduleEngine.UpcomingSession?,
     weekLabel: String?,
-    onOpenSchedule: () -> Unit,
+    onOpenWeeklyTimetable: () -> Unit,
     nowMinutes: Int,
     modifier: Modifier = Modifier
 ) {
@@ -943,24 +985,25 @@ private fun TodayNextCard(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
-            TodayTimetableButton(onOpenSchedule = onOpenSchedule)
+            TodayTimetableButton(onOpenWeeklyTimetable = onOpenWeeklyTimetable)
         }
     }
 }
 
 /**
- * Weekly timetable entry — the ONLY navigation out of the Today hero.
- * The today list and the next-class row above are informational only
- * (deliberately not clickable) so an ongoing class can never drop the
- * user into the schedule builder by accident.
+ * Weekly timetable entry - scrolls the home screen down to the real weekly
+ * timetable. The today list and the next-class row above stay informational
+ * (deliberately not clickable) so an ongoing class can never drop the user
+ * into the schedule builder by accident.
  */
 @Composable
-private fun TodayTimetableButton(onOpenSchedule: () -> Unit) {
+private fun TodayTimetableButton(onOpenWeeklyTimetable: () -> Unit) {
     OutlinedButton(
-        onClick = onOpenSchedule,
+        onClick = onOpenWeeklyTimetable,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 44.dp),
+            .heightIn(min = 44.dp)
+            .testTag("home_view_weekly_timetable_button"),
         shape = RoundedCornerShape(12.dp)
     ) {
         Icon(
