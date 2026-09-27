@@ -36,10 +36,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +75,16 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.SYSTEM -> systemDark
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
+            }
+
+            // Status/navigation bars follow the app theme (fix for washed-out
+            // light icons on light background and vice versa).
+            val context = LocalContext.current
+            SideEffect {
+                val window = (context as android.app.Activity).window
+                val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                controller.isAppearanceLightStatusBars = !isDark
+                controller.isAppearanceLightNavigationBars = !isDark
             }
 
             MyApplicationTheme(
@@ -224,10 +236,11 @@ fun CoursePlannerApp(viewModel: CoursePlannerViewModel) {
         AnimatedContent(
             targetState = currentDestination,
             transitionSpec = {
-                val forward = targetState.ordinal > initialState.ordinal
-                val slideOffset = if (forward) 200 else -200
-                (slideInHorizontally(animationSpec = tween(280)) { slideOffset } + fadeIn(animationSpec = tween(240)))
-                    .togetherWith(slideOutHorizontally(animationSpec = tween(280)) { -slideOffset } + fadeOut(animationSpec = tween(200)))
+                // RTL-aware: forward motion slides right-to-left, matching the
+                // RTL layout direction of the app.
+                val slideOffset = if (targetState.ordinal > initialState.ordinal) -160 else 160
+                (slideInHorizontally(animationSpec = tween(260)) { slideOffset } + fadeIn(animationSpec = tween(220)))
+                    .togetherWith(slideOutHorizontally(animationSpec = tween(260)) { -slideOffset / 2 } + fadeOut(animationSpec = tween(180)))
             },
             label = "ScreenTransition"
         ) { destination ->

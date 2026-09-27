@@ -122,7 +122,7 @@ fun AddCourseDialog(
                     )
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                    Icon(Icons.Default.Close, contentDescription = "بستن")
                 }
             }
         },
@@ -435,11 +435,11 @@ private fun SessionCardInput(
                 if (canDelete) {
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             Icons.Default.Delete,
-                            contentDescription = "Delete session",
+                            contentDescription = "حذف جلسه",
                             tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(18.dp)
                         )

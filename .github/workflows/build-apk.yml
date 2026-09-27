@@ -74,35 +74,37 @@ jobs:
       - name: Prepare APK Asset (unique name busts CDN/browser cache)
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v2.2.0-${HEAD_SHA}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/CoursePlanner-v2.2.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v2.2.1-${HEAD_SHA}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/CoursePlanner-v2.2.1.apk
           ls -la release-output/
           sha256sum release-output/*.apk
 
-      - name: Upload APK to Release v2.2.0
+      - name: Upload APK to Release v2.2.1
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.2.0
+          tag_name: ${{ github.ref_name }}
           target_commitish: ${{ github.sha }}
-          name: TermChin v2.2.0
+          name: TermChin ${{ github.ref_name }}
           draft: false
           prerelease: false
           body: |
-            ## 🎓 TermChin | ترم‌چین — نسخه ۲.۲.۰
+            ## 🎓 TermChin | ترم‌چین — نسخه ۲.۲.۱
 
             ### ✨ جدید در این نسخه:
-            - 📅 **هفته زوج/فرد آموزشی:** با ثبت تاریخ شروع کلاس‌ها، اپ هفته جاری را تشخیص می‌دهد؛ کلاس‌های هفته دیگر کم‌رنگ می‌شوند و گپ و ساعت هفتگی با احتساب زوج/فرد حساب می‌شود
-            - ⚡ **رفع لگ ورود به تب دروس:** فیلتر و سورت در پس‌زمینه، کش نتایج تداخل و حذف محاسبات تکراری
+            - 🎨 **بهبود کنتراست و تایپوگرافی:** اصلاح خوانایی متون با استفاده از `onSurfaceVariant` و تناظر کامل وزن‌های فونت وزیرمتن (Medium, SemiBold, Bold)
+            - 👆 **بهینه‌سازی لمس و دسترس‌پذیری:** افزایش اندازه دکمه‌های آیکونی و چک‌باکس‌ها (حداقل ۴۰dp) و دکمه تمام‌عرض تقویم هفتگی در کارت امروز
+            - 🔄 **انیمیشن اسلاید RTL:** اصلاح جهت حرکت افقی تب‌ها متناسب با چیدمان راست‌به‌چپ
+            - 🌓 **هماهنگی استاتوس‌بار و نویکیشن‌بار:** هماهنگی آیکون‌های سیستمی با تم روشن/تاریک انتخابی
 
-            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v2.2.0 (11)` و هش کامیت جدید را ببینید.
+            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v2.2.1 (12)` و هش کامیت جدید را ببینید.
           files: |
-            release-output/CoursePlanner-v2.2.0.apk
-            release-output/CoursePlanner-v2.2.0-${{ env.HEAD_SHA }}.apk
+            release-output/CoursePlanner-v2.2.1.apk
+            release-output/CoursePlanner-v2.2.1-${{ env.HEAD_SHA }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TermChin-v2.2.0-APK-${{ env.HEAD_SHA }}
-          path: release-output/CoursePlanner-v2.2.0.apk
+          name: TermChin-v2.2.1-APK-${{ env.HEAD_SHA }}
+          path: release-output/CoursePlanner-v2.2.1.apk

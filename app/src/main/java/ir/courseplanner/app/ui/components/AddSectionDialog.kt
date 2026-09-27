@@ -120,7 +120,7 @@ fun AddSectionDialog(
                     )
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                    Icon(Icons.Default.Close, contentDescription = "بستن")
                 }
             }
         },
@@ -227,11 +227,11 @@ fun AddSectionDialog(
                                 if (sessions.size > 1) {
                                     IconButton(
                                         onClick = { sessions.removeAt(index) },
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(40.dp)
                                     ) {
                                         Icon(
                                             Icons.Default.Delete,
-                                            contentDescription = "Delete session",
+                                            contentDescription = "حذف جلسه",
                                             tint = MaterialTheme.colorScheme.error,
                                             modifier = Modifier.size(18.dp)
                                         )

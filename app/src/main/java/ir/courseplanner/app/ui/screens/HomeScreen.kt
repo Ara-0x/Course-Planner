@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CalendarViewWeek
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DateRange
@@ -284,7 +286,8 @@ fun HomeScreen(
                 // The next-class row itself is NOT clickable (informational only),
                 // so an ongoing class never opens the builder. This callback only
                 // drives the «مشاهده برنامه هفتگی» button inside the card.
-                onOpenSchedule = { viewModel.navigateTo(AppDestination.SCHEDULE) }
+                onOpenSchedule = { viewModel.navigateTo(AppDestination.SCHEDULE) },
+                nowMinutes = nowMinutes
             )
         }
 
@@ -759,6 +762,7 @@ private fun TodayNextCard(
     nextClass: ScheduleEngine.UpcomingSession?,
     weekLabel: String?,
     onOpenSchedule: () -> Unit,
+    nowMinutes: Int,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -832,6 +836,9 @@ private fun TodayNextCard(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     todaysClasses.forEach { item ->
+                        val startM = ir.courseplanner.app.data.model.ClassSession.timeToMinutes(item.session.startTime)
+                        val endM = ir.courseplanner.app.data.model.ClassSession.timeToMinutes(item.session.endTime)
+                        val isPast = endM <= nowMinutes
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -839,14 +846,14 @@ private fun TodayNextCard(
                             Text(
                                 text = item.session.startTime,
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = if (isPast) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.width(52.dp)
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = item.section.courseName,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = if (isPast) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     softWrap = false
@@ -949,8 +956,20 @@ private fun TodayNextCard(
  */
 @Composable
 private fun TodayTimetableButton(onOpenSchedule: () -> Unit) {
-    OutlinedButton(onClick = onOpenSchedule, modifier = Modifier.fillMaxWidth()) {
-        Text("مشاهده برنامه هفتگی")
+    OutlinedButton(
+        onClick = onOpenSchedule,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Icon(
+            Icons.Default.CalendarViewWeek,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("مشاهده برنامه هفتگی", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
     }
 }
 
@@ -1026,7 +1045,7 @@ private fun ModernMetricCard(
                 Text(
                     text = unit,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 2.dp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

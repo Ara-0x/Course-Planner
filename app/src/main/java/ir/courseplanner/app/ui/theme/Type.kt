@@ -11,7 +11,12 @@ import androidx.compose.ui.unit.sp
 import ir.courseplanner.app.R
 
 val VazirmatnFontFamily = FontFamily(
-    Font(R.font.vazirmatn, FontWeight.Normal)
+    Font(R.font.vazirmatn, FontWeight.Normal),
+    // Single-weight font file: map every weight to it so Bold/SemiBold text
+    // renders with the app font instead of falling back to the system font.
+    Font(R.font.vazirmatn, FontWeight.Medium),
+    Font(R.font.vazirmatn, FontWeight.SemiBold),
+    Font(R.font.vazirmatn, FontWeight.Bold)
 )
 
 private val defaultPlatformTextStyle = PlatformTextStyle(includeFontPadding = false)

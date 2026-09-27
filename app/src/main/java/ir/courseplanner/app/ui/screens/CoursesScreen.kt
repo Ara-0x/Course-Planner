@@ -607,7 +607,7 @@ fun CoursesScreen(
                         Text(
                             text = "در «دروس من» چیزی با این مشخصات یافت نشد.",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
                     }
@@ -1009,7 +1009,7 @@ private fun CourseCard(
                         Text(
                             text = "کد: ${course.code}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             softWrap = false
@@ -1018,7 +1018,7 @@ private fun CourseCard(
                             Text(
                                 text = "•  دانشکده: ${course.department}",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 softWrap = false
@@ -1053,30 +1053,30 @@ private fun CourseCard(
                                 checked = course.isSelectedForGeneration,
                                 onCheckedChange = onToggleSelectedForGeneration,
                                 colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(40.dp)
                             )
                         }
                     }
 
                     IconButton(
                         onClick = onEditCourseClick,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             Icons.Default.Edit,
                             contentDescription = "ویرایش درس",
-                            tint = MaterialTheme.colorScheme.outline,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                     IconButton(
                         onClick = onDeleteCourseClick,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             Icons.Default.DeleteOutline,
-                            contentDescription = "Delete course",
-                            tint = MaterialTheme.colorScheme.outline,
+                            contentDescription = "حذف درس",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -1274,7 +1274,7 @@ private fun SectionItem(
 
                     IconButton(
                         onClick = onEditSection,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             Icons.Default.Edit,
@@ -1286,12 +1286,12 @@ private fun SectionItem(
                     if (canDeleteSection) {
                         IconButton(
                             onClick = onDeleteSection,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 Icons.Default.DeleteOutline,
-                                contentDescription = "Delete group",
-                                tint = MaterialTheme.colorScheme.outline,
+                                contentDescription = "حذف گروه",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -1368,7 +1368,7 @@ private fun SectionItem(
                     Text(
                         text = "امتحان: ${section.examDate} ${section.examTimeRange}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         softWrap = false

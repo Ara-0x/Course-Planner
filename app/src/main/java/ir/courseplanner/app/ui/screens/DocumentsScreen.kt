@@ -554,7 +554,7 @@ private fun DocumentItemCard(
                 // Bookmark Star Button
                 IconButton(
                     onClick = onToggleBookmark,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = if (doc.isBookmarked) Icons.Filled.Star else Icons.Outlined.StarBorder,
@@ -701,7 +701,7 @@ private fun DocumentItemCard(
                         if (!doc.fileUri.isNullOrBlank()) {
                             IconButton(
                                 onClick = { onOpenUri(doc.fileUri) },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(
                                      imageVector = Icons.AutoMirrored.Filled.OpenInNew,
@@ -724,7 +724,7 @@ private fun DocumentItemCard(
             ) {
                 IconButton(
                     onClick = onShare,
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Share,
@@ -736,7 +736,7 @@ private fun DocumentItemCard(
 
                 IconButton(
                     onClick = onEdit,
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
@@ -748,7 +748,7 @@ private fun DocumentItemCard(
 
                 IconButton(
                     onClick = onDelete,
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Delete,
@@ -987,7 +987,7 @@ private fun AddEditDocumentDialog(
                                     attachedFileName = null
                                     attachedFileSize = 0L
                                 },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(Icons.Filled.Close, contentDescription = "حذف فایل", modifier = Modifier.size(16.dp))
                             }

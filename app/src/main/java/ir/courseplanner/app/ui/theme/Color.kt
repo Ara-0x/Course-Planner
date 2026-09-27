@@ -18,8 +18,8 @@ val OnSurfaceLight = Color(0xFF0F172A)
 val SurfaceVariantLight = Color(0xFFF1F5F9) // Clean Slate tint
 val OnSurfaceVariantLight = Color(0xFF475569)
 val BackgroundLight = Color(0xFFF8FAFC)     // Ultra-clean light gray/slate canvas
-val OutlineLight = Color(0xFFE2E8F0)
-val OutlineVariantLight = Color(0xFFCBD5E1)
+val OutlineLight = Color(0xFFCBD5E1)         // borders, hairlines
+val OutlineVariantLight = Color(0xFFE2E8F0) // subtle dividers on light cards
 
 // Modern Dark Palette (Deep Space Navy with glowing accents)
 val PrimaryDark = Color(0xFF60A5FA)

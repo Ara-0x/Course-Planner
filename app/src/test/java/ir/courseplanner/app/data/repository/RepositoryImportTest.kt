@@ -27,7 +27,7 @@ import org.robolectric.annotation.Config
  * against a real (in-memory) Room database.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class RepositoryImportTest {
 
     private lateinit var db: AppDatabase
