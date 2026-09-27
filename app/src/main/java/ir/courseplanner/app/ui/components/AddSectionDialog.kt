@@ -369,7 +369,13 @@ fun AddSectionDialog(
                             errorMessage = "ساعت شروع و پایان جلسه ${idx + 1} الزامی است."
                             return@Button
                         }
-                        if (ClassSession.timeToMinutes(sess.startTime) >= ClassSession.timeToMinutes(sess.endTime)) {
+                        val startMin = ClassSession.parseTimeMinutesOrNull(sess.startTime)
+                        val endMin = ClassSession.parseTimeMinutesOrNull(sess.endTime)
+                        if (startMin == null || endMin == null) {
+                            errorMessage = "در جلسه ${idx + 1}، ساعت معتبر نیست (قالب درست: 08:00)."
+                            return@Button
+                        }
+                        if (startMin >= endMin) {
                             errorMessage = "در جلسه ${idx + 1}، ساعت شروع باید قبل از ساعت پایان باشد."
                             return@Button
                         }

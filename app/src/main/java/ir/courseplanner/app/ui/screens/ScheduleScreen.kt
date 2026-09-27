@@ -35,16 +35,23 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +68,7 @@ import ir.courseplanner.app.ui.AppDestination
 import ir.courseplanner.app.ui.CoursePlannerViewModel
 import ir.courseplanner.app.ui.components.WeeklyTimetable
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleScreen(
     viewModel: CoursePlannerViewModel,
@@ -321,6 +329,11 @@ fun ScheduleScreen(
             } else {
                 val currentScored = scoredList[generationState.currentIndex]
                 val isBest = generationState.currentIndex == 0
+                var showBreakdown by remember(generationState.currentIndex) { mutableStateOf(false) }
+                val totalCredits = currentScored.schedule.sumOf { it.course.credits }
+                val currentWarnings = remember(currentScored) {
+                    ir.courseplanner.app.engine.ScheduleEngine.findExamWarnings(currentScored.schedule)
+                }
 
                 Surface(
                     modifier = Modifier
@@ -356,7 +369,7 @@ fun ScheduleScreen(
                                         Spacer(modifier = Modifier.width(4.dp))
                                     }
                                     Text(
-                                        text = "برنامه رتبه ${generationState.currentIndex + 1} از $count",
+                                        text = if (isBest) "✨ پیشنهاد برتر" else "پیشنهاد ${generationState.currentIndex + 1} از $count",
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                         color = if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
@@ -366,17 +379,93 @@ fun ScheduleScreen(
                                 }
 
                                 Text(
-                                    text = "امتیاز کیفیت: ${currentScored.score}٪",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = if (currentScored.score >= 90) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    text = "$totalCredits واحد • ${currentScored.schedule.size} درس • ${currentScored.activeDaysCount} روز",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     softWrap = false
                                 )
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "امتیاز ${currentScored.score}",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        softWrap = false
+                                    )
+                                    TextButton(onClick = { showBreakdown = true }) {
+                                        Text("چرا این برنامه؟", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
 
                             IconButton(onClick = { viewModel.nextCombination() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "برنامهٔ بعدی")
+                            }
+                        }
+
+                        // Skipped courses and search-cap notes are reported here, never hidden.
+                        val noticeText = buildString {
+                            if (generationState.skippedCourses.isNotEmpty()) {
+                                append("این دروس گروه قابل‌استفاده‌ای نداشتند و لحاظ نشدند: ")
+                                append(generationState.skippedCourses.joinToString("، "))
+                            }
+                            if (generationState.truncated) {
+                                if (isNotEmpty()) append(" ")
+                                append("جست‌وجو به سقف امن رسید؛ بهترین‌های یافت‌شده نمایش داده می‌شود.")
+                            }
+                        }
+                        if (noticeText.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = noticeText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // The weekly schedule itself is the hero of this screen.
+                        WeeklyTimetable(
+                            sections = currentScored.schedule,
+                            showThursday = preferences.showThursday,
+                            density = preferences.timetableDensity,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (currentWarnings.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                    Text(
+                                        text = "⚠️ ${currentWarnings.size} هشدار امتحانی (ساعت نامشخص) — مانع برنامه نیست، ولی بررسی کن:",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    currentWarnings.forEach { w ->
+                                        Text(
+                                            text = "• ${w.descriptionFa}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -463,21 +552,79 @@ fun ScheduleScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                    }
+                }
 
-                        // Visual Preview of Timetable
-                        WeeklyTimetable(
-                            sections = currentScored.schedule,
-                            showThursday = preferences.showThursday,
-                            density = preferences.timetableDensity,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                if (showBreakdown) {
+                    ModalBottomSheet(
+                        onDismissRequest = { showBreakdown = false },
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                    ) {
+                        ScoreBreakdownSheet(scored = currentScored)
                     }
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+/**
+ * "Why this schedule?" — every score component on its own line so the
+ * ranking is understandable instead of a magic number.
+ */
+@Composable
+private fun ScoreBreakdownSheet(scored: ir.courseplanner.app.engine.ScoredSchedule) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = "چرا این برنامه پیشنهاد شده؟",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        scored.breakdown.forEach { component ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (component.delta >= 0) "✓ ${component.labelFa}" else "− ${component.labelFa}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = if (component.delta >= 0) "+${component.delta}" else "${component.delta}",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = if (component.delta >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "امتیاز نهایی",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "${scored.score}",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 

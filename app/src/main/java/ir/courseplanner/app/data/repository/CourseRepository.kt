@@ -1,6 +1,8 @@
 package ir.courseplanner.app.data.repository
 
+import androidx.room.withTransaction
 import ir.courseplanner.app.data.importer.ImportItem
+import ir.courseplanner.app.data.local.AppDatabase
 import ir.courseplanner.app.data.local.CourseDao
 import ir.courseplanner.app.data.local.CourseDocumentDao
 import ir.courseplanner.app.data.local.SectionDao
@@ -13,6 +15,7 @@ import ir.courseplanner.app.data.model.SectionWithDetails
 import kotlinx.coroutines.flow.Flow
 
 class CourseRepository(
+    private val db: AppDatabase,
     private val courseDao: CourseDao,
     private val sectionDao: SectionDao,
     private val documentDao: CourseDocumentDao
@@ -52,28 +55,37 @@ class CourseRepository(
         return courseDao.getCourseCount()
     }
 
+    /** Whole import runs in one transaction: all-or-nothing, never partial. */
     suspend fun importItems(items: List<ImportItem>, clearExisting: Boolean = false) {
-        if (clearExisting) {
-            clearAllData()
+        db.withTransaction {
+            if (clearExisting) {
+                clearAllData()
+            }
+            insertAll(items)
         }
-        insertAll(items)
     }
 
     /**
-     * Portal catalog import: same-code courses are replaced (not duplicated),
-     * so re-importing a newer portal file is always safe. Imported courses stay
-     * catalog-only (`isSelectedForGeneration` comes from the parser as false)
-     * until the user adds them by code from the Courses screen.
+     * Portal catalog import with UPSERT sync per course code (one transaction):
+     * - New course → plain insert.
+     * - Known course → catalog fields updated, but user-owned state
+     *   (`isSelectedForGeneration`, section `isEnrolled`) is preserved, so a
+     *   re-import never wipes enrollments, picks, or documents (ids are kept).
+     * - Imported section matched by sectionCode → fields updated, sessions replaced.
+     * - Stale sections (gone from the portal) are deleted ONLY when not enrolled;
+     *   an enrolled section the user chose is always kept.
      */
     suspend fun importPortalItems(items: List<ImportItem>, clearExisting: Boolean = false) {
-        if (clearExisting) {
-            clearAllData()
-        } else {
+        db.withTransaction {
+            if (clearExisting) {
+                clearAllData()
+                insertAll(items)
+                return@withTransaction
+            }
             for (item in items) {
-                courseDao.deleteCourseByCode(item.course.code)
+                syncCourse(item)
             }
         }
-        insertAll(items)
     }
 
     private suspend fun insertAll(items: List<ImportItem>) {
@@ -88,6 +100,48 @@ class CourseRepository(
         }
     }
 
+    private suspend fun syncCourse(item: ImportItem) {
+        val existing = courseDao.getCourseByCode(item.course.code)
+        if (existing == null) {
+            insertAll(listOf(item))
+            return
+        }
+        // Catalog fields refresh; the user's own flags survive the re-import.
+        courseDao.updateCourse(
+            item.course.copy(
+                id = existing.id,
+                isSelectedForGeneration = existing.isSelectedForGeneration
+            )
+        )
+        val existingSections = sectionDao.getSectionsByCourseId(existing.id)
+            .associateBy { it.sectionCode }
+        val importedCodes = mutableSetOf<String>()
+        for (secItem in item.sections) {
+            importedCodes.add(secItem.section.sectionCode)
+            val old = existingSections[secItem.section.sectionCode]
+            if (old == null) {
+                val sectionId = sectionDao.insertSection(secItem.section.copy(courseId = existing.id))
+                sectionDao.insertSessions(secItem.sessions.map { it.copy(sectionId = sectionId) })
+            } else {
+                sectionDao.updateSection(
+                    secItem.section.copy(
+                        id = old.id,
+                        courseId = existing.id,
+                        isEnrolled = old.isEnrolled
+                    )
+                )
+                sectionDao.deleteSessionsBySectionId(old.id)
+                sectionDao.insertSessions(secItem.sessions.map { it.copy(sectionId = old.id) })
+            }
+        }
+        // Drop stale catalog-only sections; never touch the user's enrolled pick.
+        for ((code, old) in existingSections) {
+            if (code !in importedCodes && !old.isEnrolled) {
+                sectionDao.deleteSectionById(old.id)
+            }
+        }
+    }
+
     /**
      * Inserts a manually created course along with its first section and class sessions.
      */
@@ -95,12 +149,12 @@ class CourseRepository(
         course: Course,
         section: CourseSection,
         sessions: List<ClassSession>
-    ): Long {
+    ): Long = db.withTransaction {
         val courseId = courseDao.insertCourse(course)
         val sectionId = sectionDao.insertSection(section.copy(courseId = courseId))
         val sessionsWithSec = sessions.map { it.copy(sectionId = sectionId) }
         sectionDao.insertSessions(sessionsWithSec)
-        return courseId
+        courseId
     }
 
     /**
@@ -110,15 +164,45 @@ class CourseRepository(
         courseId: Long,
         section: CourseSection,
         sessions: List<ClassSession>
-    ): Long {
+    ): Long = db.withTransaction {
         val sectionId = sectionDao.insertSection(section.copy(courseId = courseId))
         val sessionsWithSec = sessions.map { it.copy(sectionId = sectionId) }
         sectionDao.insertSessions(sessionsWithSec)
-        return sectionId
+        sectionId
     }
 
     suspend fun deleteCourse(courseId: Long) {
         courseDao.deleteCourseById(courseId)
+    }
+
+    sealed interface UpdateCourseResult {
+        data object Success : UpdateCourseResult
+        data object DuplicateCode : UpdateCourseResult
+        data object NotFound : UpdateCourseResult
+    }
+
+    /**
+     * Updates a course's own fields (name/code/department/credits) in place.
+     * Sections, enrollments, generator flag and documents are untouched, so the
+     * user never has to delete and re-add a course to fix a typo. Runs in a
+     * transaction together with the duplicate-code check.
+     */
+    suspend fun updateCourseDetails(
+        courseId: Long,
+        name: String,
+        code: String,
+        department: String,
+        credits: Int
+    ): UpdateCourseResult = db.withTransaction {
+        val current = courseDao.getCourseById(courseId) ?: return@withTransaction UpdateCourseResult.NotFound
+        val clash = courseDao.getCourseByCode(code)
+        if (clash != null && clash.id != courseId) {
+            return@withTransaction UpdateCourseResult.DuplicateCode
+        }
+        courseDao.updateCourse(
+            current.copy(name = name, code = code, department = department, credits = credits)
+        )
+        UpdateCourseResult.Success
     }
 
     suspend fun deleteSection(sectionId: Long) {
@@ -130,19 +214,23 @@ class CourseRepository(
     }
 
     suspend fun setSectionEnrolled(section: SectionWithDetails, isEnrolled: Boolean) {
-        if (isEnrolled) {
-            // Unenroll other sections of the same course so only 1 section is enrolled per course
-            sectionDao.unenrollAllForCourse(section.course.id)
-            sectionDao.setSectionEnrolled(section.section.id, true)
-        } else {
-            sectionDao.setSectionEnrolled(section.section.id, false)
+        db.withTransaction {
+            if (isEnrolled) {
+                // Unenroll other sections of the same course so only 1 section is enrolled per course
+                sectionDao.unenrollAllForCourse(section.course.id)
+                sectionDao.setSectionEnrolled(section.section.id, true)
+            } else {
+                sectionDao.setSectionEnrolled(section.section.id, false)
+            }
         }
     }
 
     suspend fun applySchedule(sections: List<SectionWithDetails>) {
-        sectionDao.clearAllEnrollments()
-        for (sec in sections) {
-            sectionDao.setSectionEnrolled(sec.section.id, true)
+        db.withTransaction {
+            sectionDao.clearAllEnrollments()
+            for (sec in sections) {
+                sectionDao.setSectionEnrolled(sec.section.id, true)
+            }
         }
     }
 
@@ -151,9 +239,11 @@ class CourseRepository(
     }
 
     suspend fun clearAllData() {
-        documentDao.deleteAllDocuments()
-        sectionDao.deleteAllSessions()
-        sectionDao.deleteAllSections()
-        courseDao.deleteAllCourses()
+        db.withTransaction {
+            documentDao.deleteAllDocuments()
+            sectionDao.deleteAllSessions()
+            sectionDao.deleteAllSections()
+            courseDao.deleteAllCourses()
+        }
     }
 }

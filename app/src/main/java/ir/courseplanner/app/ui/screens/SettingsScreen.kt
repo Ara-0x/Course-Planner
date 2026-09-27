@@ -704,6 +704,28 @@ fun SettingsScreen(
                 // Portal HTML file import (Pooya / Golestan / Sama …)
                 // The saved "presented courses" page becomes a hidden catalog;
                 // courses are added to "my courses" later by entering their code.
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "۱. صفحه «دروس ارائه‌شده» دانشگاه را باز کنید.",
+                            "۲. صفحه را به‌صورت HTML ذخیره کنید (Save as HTML).",
+                            "۳. همین‌جا فایل را انتخاب کنید."
+                        ).forEach { step ->
+                            Text(
+                                text = step,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
                 OutlinedButton(
                     onClick = { portalFilePicker.launch("*/*") },
                     modifier = Modifier

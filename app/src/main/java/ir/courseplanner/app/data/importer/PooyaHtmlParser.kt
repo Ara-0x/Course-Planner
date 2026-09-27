@@ -41,16 +41,17 @@ object PooyaHtmlParser {
     )
     private val durationRegex = Regex("به مدت\\s*(\\d+)\\s*دقیقه")
     private val minutesAfterRegex = Regex("دقیقه\\s*در\\s+(.+)")
+    // Duration is captured from the exam segment itself ("به مدت 120 دقیقه");
+    // group 4 = duration minutes (may be absent), group 5 = location, group 6 = date.
+    // The date pattern is strict on purpose: a loose capture would swallow the
+    // next Persian word (e.g. "قابل") as a fake exam date.
     private val examRegex = Regex(
-        "امتحان روز:\\s*([^\\s]*)\\s*ساعت\\s*(\\d+)(?::(\\d+))?[^در]*در کلاس\\s*([^\\s]*)\\s*(?:به تاریخ\\s*([^\\s<]+))?"
+        "امتحان روز:\\s*([^\\s]*)\\s*ساعت\\s*(\\d+)(?::(\\d+))?\\s*(?:به مدت\\s*(\\d+)\\s*دقیقه\\s*)?در کلاس\\s*([^\\s]*)\\s*(?:به تاریخ\\s*(\\d{2,4}[/-]\\d{1,2}[/-]\\d{1,2}))?"
     )
     private val degreeRegex =
         Regex("مقطع:\\s*(.+?)(?=\\s*(?:گروه آموزشی|جلسه|امتحان|قابل انتخاب|$))")
     private val departmentRegex =
         Regex("گروه آموزشی:\\s*(.+?)(?=\\s*(?:جلسه|امتحان|قابل انتخاب|$))")
-    private val notesRegex =
-        Regex("(?:تذکر|تدکر)\\s*:?\\s*(.+?)(?=\\s*(?:مقطع|گروه آموزشی|جلسه|امتحان|قابل انتخاب|$))")
-
     private val persianDigits = "۰۱۲۳۴۵۶۷۸۹"
     private val arabicDigits = "٠١٢٣٤٥٦٧٨٩"
 
@@ -101,17 +102,22 @@ object PooyaHtmlParser {
             return ImportResult.Failure("فایل HTML خالی است.")
         }
         return try {
-            val items = parseRows(html)
-            if (items.isEmpty()) {
+            val parsed = parseRowsDetailed(html)
+            if (parsed.items.isEmpty()) {
                 ImportResult.Failure(
                     "هیچ درسی در فایل HTML یافت نشد. مطمئن شوید فایل ذخیره‌شده " +
                         "صفحه «لیست دروس ارائه‌شده» پرتال است."
                 )
             } else {
-                val groupCount = items.sumOf { it.sections.size }
+                val groupCount = parsed.items.sumOf { it.sections.size }
+                val base = "تعداد ${parsed.items.size} درس در $groupCount گروه از فایل پرتال وارد کاتالوگ شد."
+                val warningNote = if (parsed.warnings.isNotEmpty()) {
+                    " ⚠️ ${parsed.warnings.size} ردیف نیاز به بررسی دارد: ${parsed.warnings.take(2).joinToString("؛ ")}"
+                } else ""
                 ImportResult.Success(
-                    items = items,
-                    message = "تعداد ${items.size} درس در $groupCount گروه از فایل پرتال وارد کاتالوگ شد."
+                    items = parsed.items,
+                    message = base + warningNote,
+                    warnings = parsed.warnings
                 )
             }
         } catch (e: Exception) {
@@ -119,28 +125,97 @@ object PooyaHtmlParser {
         }
     }
 
-    internal fun parseRows(html: String): List<ImportItem> {
-        val tableHtml = findCoursesTable(html) ?: return emptyList()
+    /** Header aliases (normalized before compare) for semantic column mapping. */
+    private val headerAliases = mapOf(
+        "code" to listOf("شماره درس", "کد درس", "شماره", "کد", "code", "lescode"),
+        "group" to listOf("گروه", "group"),
+        "name" to listOf("نام درس", "عنوان درس", "درس", "name"),
+        "credits" to listOf("واحد", "تعداد واحد", "واحدها", "credits"),
+        "capacity" to listOf("ظرفیت", "capacity"),
+        "instructor" to listOf("نام استاد", "استاد", "مدرس", "instructor")
+    )
+
+    private fun normHeaderCell(rawHtml: String): String =
+        normalizeDigits(cleanText(rawHtml))
+            .replace("[\\s\\u200B-\\u200D\\uFEFF_\\-]+".toRegex(), "")
+
+    /** Maps semantic field → cell index from the <th> header row, if present. */
+    internal fun mapColumnsFromHeader(headerRowHtml: String): Map<String, Int> {
+        val map = mutableMapOf<String, Int>()
+        val headers = cellRegex.findAll(headerRowHtml).map { normHeaderCell(it.groupValues[1]) }.toList()
+        // Header cells may be <th> instead of <td>.
+        val thCells = Regex("<th[^>]*>(.*?)</th>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .findAll(headerRowHtml).map { normHeaderCell(it.groupValues[1]) }.toList()
+        val all = if (thCells.isNotEmpty()) thCells else headers
+        all.forEachIndexed { idx, h ->
+            for ((field, aliases) in headerAliases) {
+                if (field !in map && aliases.any { normHeaderCell(it) == h }) {
+                    map[field] = idx
+                }
+            }
+        }
+        return map
+    }
+
+    private fun cellAt(cells: List<String>, mapped: Map<String, Int>, field: String, legacyIndex: Int): String {
+        val idx = mapped[field] ?: legacyIndex
+        return if (idx in cells.indices) cells[idx] else ""
+    }
+
+    internal data class ParsedRows(
+        val items: List<ImportItem>,
+        /** Human-readable, capped list of skipped-row reasons. */
+        val warnings: List<String>
+    )
+
+    internal fun parseRows(html: String): List<ImportItem> = parseRowsDetailed(html).items
+
+    internal fun parseRowsDetailed(html: String): ParsedRows {
+        val tableHtml = findCoursesTable(html) ?: return ParsedRows(emptyList(), emptyList())
+
+        // Semantic column mapping from the header row; legacy Pooya positions as fallback.
+        var colMap: Map<String, Int> = emptyMap()
+        for (rowMatch in rowRegex.findAll(tableHtml)) {
+            if (rowMatch.groupValues[1].contains("<th", ignoreCase = true)) {
+                colMap = mapColumnsFromHeader(rowMatch.groupValues[1])
+                break
+            }
+        }
+
+        val warnings = mutableListOf<String>()
+        var skippedRows = 0
+        fun skipRow(reason: String) {
+            skippedRows++
+            if (warnings.size < 5) warnings.add(reason)
+        }
 
         val coursesMap = linkedMapOf<String, MutableCourseAcc>()
+        var rowNumber = 0
         for (rowMatch in rowRegex.findAll(tableHtml)) {
             val rowHtml = rowMatch.groupValues[1]
             if (rowHtml.contains("<th", ignoreCase = true)) continue
+            rowNumber++
 
             val cells = cellRegex.findAll(rowHtml).map { it.groupValues[1] }.toList()
-            if (cells.size < 9) continue
+            if (cells.size < 9 && colMap.isEmpty()) continue
 
-            val code = normalizeDigits(cleanText(cells[1]))
-            val groupCode = normalizeDigits(cleanText(cells[2])).ifBlank { "1" }
-            val name = cleanText(cells[3])
-            if (code.isBlank() || name.isBlank()) continue
+            val code = normalizeDigits(cleanText(cellAt(cells, colMap, "code", 1)))
+            val groupCode = normalizeDigits(cleanText(cellAt(cells, colMap, "group", 2))).ifBlank { "1" }
+            val name = cleanText(cellAt(cells, colMap, "name", 3))
+            if (code.isBlank() || name.isBlank()) {
+                skipRow("ردیف $rowNumber: کد یا نام درس خالی است؛ نادیده گرفته شد.")
+                continue
+            }
 
-            val credits = normalizeDigits(cleanText(cells[4])).toDoubleOrNull()
-                ?.roundToInt()?.coerceAtLeast(1) ?: 1
-            val enrolled = normalizeDigits(cleanText(cells[5])).toIntOrNull() ?: 0
-            val capacity = normalizeDigits(cleanText(cells[6])).toIntOrNull() ?: 0
-            val faculty = cleanText(cells[7]).ifBlank { "دانشکده اصلی" }
-            val instructor = cleanText(cells[8]).replace("\\s+".toRegex(), " ").trim()
+            // Invalid credits are skipped with a warning — never silently defaulted.
+            val creditsRaw = normalizeDigits(cleanText(cellAt(cells, colMap, "credits", 4)))
+            val credits = creditsRaw.toDoubleOrNull()?.roundToInt()
+            if (credits == null || credits !in 1..20) {
+                skipRow("ردیف $rowNumber (کد $code): تعداد واحد نامعتبر («$creditsRaw»)؛ نادیده گرفته شد.")
+                continue
+            }
+            val capacity = normalizeDigits(cleanText(cellAt(cells, colMap, "capacity", 6))).toIntOrNull() ?: 0
+            val instructor = cleanText(cellAt(cells, colMap, "instructor", 8)).replace("\\s+".toRegex(), " ").trim()
 
             val tooltip = normalizeDigits(cleanText(extractTooltip(rowHtml)))
             val sessions = parseSessions(tooltip)
@@ -148,7 +223,12 @@ object PooyaHtmlParser {
             val degree = degreeRegex.find(tooltip)?.groupValues?.getOrNull(1)?.trim().orEmpty()
             val department = departmentRegex.find(tooltip)?.groupValues?.getOrNull(1)?.trim()
                 .orEmpty().ifBlank { "كامپيوتر" }
-            val notes = notesRegex.find(tooltip)?.groupValues?.getOrNull(1)?.trim()
+
+            val examEnd = if (exam != null && exam.durationMin > 0) {
+                val startMin = ClassSession.parseTimeMinutesOrNull(exam.time) ?: 0
+                val endMin = startMin + exam.durationMin
+                "%02d:%02d".format(endMin / 60, endMin % 60)
+            } else ""
 
             val section = ImportSectionItem(
                 section = CourseSection(
@@ -158,7 +238,7 @@ object PooyaHtmlParser {
                     capacity = capacity,
                     examDate = exam?.date.orEmpty(),
                     examStartTime = exam?.time.orEmpty(),
-                    examEndTime = "",
+                    examEndTime = examEnd,
                     isEnrolled = false
                 ),
                 sessions = sessions
@@ -175,10 +255,6 @@ object PooyaHtmlParser {
                         isSelectedForGeneration = false,
                         degree = degree
                     ),
-                    faculty = faculty,
-                    degree = degree,
-                    enrolled = enrolled,
-                    notes = notes,
                     sections = mutableListOf()
                 )
             }
@@ -187,21 +263,18 @@ object PooyaHtmlParser {
             }
         }
 
-        return coursesMap.values.map { acc ->
+        val items = coursesMap.values.map { acc ->
             ImportItem(course = acc.course, sections = acc.sections)
         }
+        return ParsedRows(items, warnings.toList())
     }
 
     private data class MutableCourseAcc(
         val course: Course,
-        val faculty: String,
-        val degree: String,
-        val enrolled: Int,
-        val notes: String?,
         val sections: MutableList<ImportSectionItem>
     )
 
-    internal data class ParsedExam(val date: String, val time: String)
+    internal data class ParsedExam(val date: String, val time: String, val durationMin: Int)
 
     private fun findCoursesTable(html: String): String? {
         val tables = tableRegex.findAll(html).map { it.groupValues[1] }.toList()
@@ -244,6 +317,8 @@ object PooyaHtmlParser {
 
             val hour = m.groupValues[2].toIntOrNull() ?: continue
             val minute = m.groupValues[3].toIntOrNull() ?: 0
+            // Out-of-range class times are skipped, never stored as-is.
+            if (hour !in 0..23 || minute !in 0..59) continue
             val details = m.groupValues[4]
             val parity = m.groupValues[5].ifBlank { "هردو" }
 
@@ -290,18 +365,23 @@ object PooyaHtmlParser {
         if (cleanedTooltip.isBlank()) return null
         val m = examRegex.find(cleanedTooltip) ?: return null
         val dayDesc = m.groupValues[1].trim()
-        val hour = m.groupValues[2].toIntOrNull() ?: 0
+        val hour = m.groupValues[2].toIntOrNull() ?: return null
         val minute = m.groupValues[3].toIntOrNull() ?: 0
-        val rawLoc = m.groupValues[4].trim()
+        // Reject out-of-range exam times instead of storing them silently.
+        if (hour !in 0..23 || minute !in 0..59) return null
+        // 0/absent duration means "unknown duration" (engine warns, never assumes).
+        val durationMin = m.groupValues[4].toIntOrNull() ?: 0
+        val rawLoc = m.groupValues[5].trim()
         val loc = if (rawLoc == "0") "" else rawLoc
-        val date = m.groupValues[5].trim()
+        val date = m.groupValues[6].trim()
         // Dummy portal rows use hour 6, class 0 and no date/day.
         if (date.isEmpty() && loc.isEmpty() && (hour == 6 || hour == 0) && dayDesc.isEmpty()) {
             return null
         }
         return ParsedExam(
             date = date,
-            time = "%02d:%02d".format(hour, minute)
+            time = "%02d:%02d".format(hour, minute),
+            durationMin = durationMin
         )
     }
 

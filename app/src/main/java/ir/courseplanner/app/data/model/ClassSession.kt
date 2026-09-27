@@ -48,15 +48,39 @@ data class ClassSession(
         get() = timeToMinutes(endTime)
 
     companion object {
-        fun timeToMinutes(time: String): Int {
-            val parts = time.trim().split(":")
-            if (parts.size >= 2) {
-                val h = parts[0].toIntOrNull() ?: 0
-                val m = parts[1].toIntOrNull() ?: 0
-                return h * 60 + m
-            }
-            return 0
+        private const val PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
+        private const val ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
+
+        /** Normalizes Persian/Arabic-Indic digits to ASCII so "۸:۳۰" parses like "8:30". */
+        fun normalizeDigits(input: String): String {
+            var out = input
+            PERSIAN_DIGITS.forEachIndexed { i, c -> out = out.replace(c, '0' + i) }
+            ARABIC_DIGITS.forEachIndexed { i, c -> out = out.replace(c, '0' + i) }
+            return out
         }
+
+        /**
+         * Strictly parses "H:mm"/"HH:mm" (00–23 : 00–59) to minutes from midnight.
+         * Returns null for anything else ("abc", "25:90", "08:00 - 10:00", "") —
+         * callers must handle null explicitly instead of silently using 00:00.
+         */
+        fun parseTimeMinutesOrNull(raw: String): Int? {
+            val parts = normalizeDigits(raw).trim().split(":")
+            if (parts.size != 2) return null
+            // Reject empty components and stray whitespace inside ("8 :00").
+            if (parts[0].isBlank() || parts[1].isBlank()) return null
+            val h = parts[0].toIntOrNull() ?: return null
+            val m = parts[1].toIntOrNull() ?: return null
+            if (h !in 0..23 || m !in 0..59) return null
+            return h * 60 + m
+        }
+
+        /**
+         * Legacy lenient conversion. Invalid input yields 0 — only use it for
+         * already-validated data (conflict math, timetable layout). For any new
+         * parsing/validation use [parseTimeMinutesOrNull].
+         */
+        fun timeToMinutes(time: String): Int = parseTimeMinutesOrNull(time) ?: 0
 
         fun getDayName(dayIndex: Int, isFarsi: Boolean = true): String {
             return if (isFarsi) {

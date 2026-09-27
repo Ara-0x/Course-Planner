@@ -244,6 +244,215 @@ class ScheduleEngineTest {
     }
 
     @Test
+    fun testStrictTimeParsing_validForms() {
+        assertEquals(480, ClassSession.parseTimeMinutesOrNull("08:00"))
+        assertEquals(480, ClassSession.parseTimeMinutesOrNull("8:00"))
+        assertEquals(510, ClassSession.parseTimeMinutesOrNull("08:30"))
+        assertEquals(510, ClassSession.parseTimeMinutesOrNull("۸:۳۰"))
+        assertEquals(0, ClassSession.parseTimeMinutesOrNull("00:00"))
+        assertEquals(1439, ClassSession.parseTimeMinutesOrNull("23:59"))
+    }
+
+    @Test
+    fun testStrictTimeParsing_invalidFormsAreNullNeverZero() {
+        assertNull(ClassSession.parseTimeMinutesOrNull("abc"))
+        assertNull(ClassSession.parseTimeMinutesOrNull("25:90"))
+        assertNull(ClassSession.parseTimeMinutesOrNull("24:00"))
+        assertNull(ClassSession.parseTimeMinutesOrNull("08:00 - 10:00"))
+        assertNull(ClassSession.parseTimeMinutesOrNull(""))
+        assertNull(ClassSession.parseTimeMinutesOrNull("8"))
+        // Legacy lenient helper keeps old behavior for already-validated data.
+        assertEquals(0, ClassSession.timeToMinutes("abc"))
+    }
+
+    @Test
+    fun testAdjacentClasses_noConflict_oneMinuteOverlapConflicts() {
+        val first = createMockSection(
+            1, "A", "A", 3, 1, "01", listOf(0 to ("10:00" to "12:00"))
+        )
+        val adjacent = createMockSection(
+            2, "B", "B", 3, 2, "01", listOf(0 to ("12:00" to "14:00"))
+        )
+        assertNull(ScheduleEngine.checkConflict(first, adjacent))
+
+        val overlapByMinute = createMockSection(
+            2, "B", "B", 3, 3, "01", listOf(0 to ("11:59" to "14:00"))
+        )
+        val conflict = ScheduleEngine.checkConflict(first, overlapByMinute)
+        assertNotNull(conflict)
+        assertEquals(ConflictType.CLASS_TIME_OVERLAP, conflict?.type)
+    }
+
+    @Test
+    fun testExamWarning_sameDayUnknownTimeIsNotDefiniteConflict() {
+        val full = createMockSection(
+            1, "A", "A", 3, 1, "01", listOf(0 to ("08:00" to "10:00")),
+            examDate = "1403/10/25", examStart = "09:00", examEnd = "12:00"
+        )
+        val unknownEnd = createMockSection(
+            2, "B", "B", 3, 2, "01", listOf(1 to ("08:00" to "10:00")),
+            examDate = "1403/10/25", examStart = "10:00", examEnd = ""
+        )
+        // Not a definite conflict...
+        assertNull(ScheduleEngine.checkConflict(full, unknownEnd))
+        // ...but a warning with insufficient-data semantics.
+        val warning = ScheduleEngine.checkExamWarning(full, unknownEnd)
+        assertNotNull(warning)
+        assertEquals(ConflictType.EXAM_SAME_DAY_WARNING, warning?.type)
+        assertEquals(1, ScheduleEngine.findExamWarnings(listOf(full, unknownEnd)).size)
+    }
+
+    @Test
+    fun testExamWarning_bothFullyTimedDisjointIsClean() {
+        val a = createMockSection(
+            1, "A", "A", 3, 1, "01", listOf(0 to ("08:00" to "10:00")),
+            examDate = "1403/10/25", examStart = "08:00", examEnd = "10:00"
+        )
+        val b = createMockSection(
+            2, "B", "B", 3, 2, "01", listOf(1 to ("08:00" to "10:00")),
+            examDate = "1403/10/25", examStart = "10:00", examEnd = "12:00"
+        )
+        assertNull(ScheduleEngine.checkConflict(a, b))
+        assertNull(ScheduleEngine.checkExamWarning(a, b))
+        assertTrue(ScheduleEngine.findExamWarnings(listOf(a, b)).isEmpty())
+    }
+
+    @Test
+    fun testExamWarning_differentDaysNoWarning() {
+        val a = createMockSection(
+            1, "A", "A", 3, 1, "01", listOf(0 to ("08:00" to "10:00")),
+            examDate = "1403/10/25", examStart = "", examEnd = ""
+        )
+        val b = createMockSection(
+            2, "B", "B", 3, 2, "01", listOf(1 to ("08:00" to "10:00")),
+            examDate = "1403/10/26", examStart = "", examEnd = ""
+        )
+        assertNull(ScheduleEngine.checkConflict(a, b))
+        assertNull(ScheduleEngine.checkExamWarning(a, b))
+    }
+
+    @Test
+    fun testTopSearch_reportsSkippedCourseInsteadOfDroppingIt() {
+        val math = createMockSection(
+            1, "MATH", "ریاضی", 3, 1, "01", listOf(0 to ("08:00" to "10:00"))
+        )
+        val result = ScheduleEngine.generateTopSchedules(
+            courses = listOf(
+                GeneratorCourse("ریاضی", listOf(math)),
+                GeneratorCourse("ساختمان داده", emptyList())
+            ),
+            preference = OptimizationPreference.BALANCED
+        )
+        assertEquals(listOf("ساختمان داده"), result.skippedCourses)
+        assertEquals(1, result.totalValid)
+        assertEquals(1, result.ranked.size)
+        assertFalse(result.truncated)
+    }
+
+    @Test
+    fun testTopSearch_keepsTrueBestWithTopKOne() {
+        val s1 = createMockSection(1, "M", "M", 3, 1, "01", listOf(0 to ("08:00" to "10:00")))
+        val s2 = createMockSection(1, "M", "M", 3, 2, "02", listOf(0 to ("13:00" to "15:00")))
+        val t1 = createMockSection(2, "P", "P", 3, 3, "01", listOf(0 to ("10:00" to "12:00")))
+        val t2 = createMockSection(2, "P", "P", 3, 4, "02", listOf(0 to ("16:00" to "18:00")))
+        val result = ScheduleEngine.generateTopSchedules(
+            courses = listOf(GeneratorCourse("M", listOf(s1, s2)), GeneratorCourse("P", listOf(t1, t2))),
+            preference = OptimizationPreference.MIN_GAPS,
+            topK = 1
+        )
+        // All 4 combos valid, but only the true best (zero gap) is kept.
+        assertEquals(4, result.totalValid)
+        assertEquals(1, result.ranked.size)
+        assertEquals(0, result.ranked[0].totalGapMinutes)
+        val expected = ScheduleEngine.evaluateSchedule(listOf(s1, t1), OptimizationPreference.MIN_GAPS)
+        assertEquals(expected.score, result.ranked[0].score)
+    }
+
+    @Test
+    fun testTopSearch_impossibleScheduleReportsZeroWithoutSkips() {
+        val a = createMockSection(1, "A", "A", 3, 1, "01", listOf(0 to ("08:00" to "10:00")))
+        val b = createMockSection(2, "B", "B", 3, 2, "01", listOf(0 to ("09:00" to "11:00")))
+        val result = ScheduleEngine.generateTopSchedules(
+            courses = listOf(GeneratorCourse("A", listOf(a)), GeneratorCourse("B", listOf(b))),
+            preference = OptimizationPreference.BALANCED
+        )
+        assertEquals(0, result.totalValid)
+        assertTrue(result.ranked.isEmpty())
+        assertTrue(result.skippedCourses.isEmpty())
+    }
+
+    @Test
+    fun testRealScore_noFakeHundredAndExplainableBreakdown() {
+        val secB1 = createMockSection(1, "B1", "Course A", 3, 3, "01", listOf(0 to ("08:00" to "10:00")))
+        val secB2 = createMockSection(2, "B2", "Course B", 3, 4, "01", listOf(0 to ("13:00" to "15:00")))
+        val scheduleB = listOf(secB1, secB2)
+
+        val evaluated = ScheduleEngine.evaluateSchedule(scheduleB, OptimizationPreference.MIN_GAPS)
+        // gap 180 -> -39, one 8:00 class -> -1 => real score 60, never faked to 100.
+        assertEquals(60, evaluated.score)
+        val deltaSum = evaluated.breakdown.sumOf { it.delta }
+        assertEquals(60, (100 + deltaSum).coerceIn(0, 100))
+        assertTrue(evaluated.breakdown.any { it.labelFa.contains("گپ") })
+
+        val ranked = ScheduleEngine.rankSchedules(listOf(scheduleB), OptimizationPreference.MIN_GAPS)
+        assertEquals(60, ranked[0].score)
+        assertTrue(ranked[0].tags.any { it.contains("پیشنهاد برتر") })
+    }
+
+    @Test
+    fun testCalendarMapping_iranianWeekStartsSaturday() {
+        assertEquals(0, ScheduleEngine.calendarDayOfWeekToAppDay(java.util.Calendar.SATURDAY))
+        assertEquals(1, ScheduleEngine.calendarDayOfWeekToAppDay(java.util.Calendar.SUNDAY))
+        assertEquals(5, ScheduleEngine.calendarDayOfWeekToAppDay(java.util.Calendar.THURSDAY))
+        assertEquals(6, ScheduleEngine.calendarDayOfWeekToAppDay(java.util.Calendar.FRIDAY))
+    }
+
+    @Test
+    fun testNextSession_todayLaterAndOngoingAndWrap() {
+        val morning = createMockSection(
+            1, "A", "ریاضی", 3, 1, "01", listOf(0 to ("08:00" to "10:00"))
+        )
+        val noon = createMockSection(
+            2, "B", "فیزیک", 3, 2, "01", listOf(0 to ("10:00" to "12:00"), 1 to ("08:00" to "10:00"))
+        )
+        val sections = listOf(morning, noon)
+
+        // Saturday 07:00 -> morning class next, not ongoing.
+        val first = ScheduleEngine.nextUpcomingSession(sections, 0, 420)
+        assertNotNull(first)
+        assertEquals("08:00", first?.session?.startTime)
+        assertEquals(false, first?.ongoing)
+
+        // Saturday 08:30 -> morning class ongoing.
+        val ongoing = ScheduleEngine.nextUpcomingSession(sections, 0, 510)
+        assertNotNull(ongoing)
+        assertEquals("08:00", ongoing?.session?.startTime)
+        assertEquals(true, ongoing?.ongoing)
+
+        // Saturday 18:00 -> wraps to Sunday 08:00, not ongoing.
+        val wrapped = ScheduleEngine.nextUpcomingSession(sections, 0, 1080)
+        assertNotNull(wrapped)
+        assertEquals(1, wrapped?.dayOfWeek)
+        assertEquals(false, wrapped?.ongoing)
+
+        // Empty schedule -> null.
+        assertNull(ScheduleEngine.nextUpcomingSession(emptyList(), 0, 0))
+    }
+
+    @Test
+    fun testSessionsOnDay_sorted() {
+        val a = createMockSection(
+            1, "A", "A", 3, 1, "01",
+            listOf(0 to ("14:00" to "16:00"), 0 to ("08:00" to "10:00"))
+        )
+        val todays = ScheduleEngine.sessionsOnDay(listOf(a), 0)
+        assertEquals(2, todays.size)
+        assertEquals("08:00", todays[0].session.startTime)
+        assertEquals("14:00", todays[1].session.startTime)
+        assertTrue(ScheduleEngine.sessionsOnDay(listOf(a), 3).isEmpty())
+    }
+
+    @Test
     fun testCourseImporter_jsonValidation() {
         val invalidJson = "this is not json"
         val result = CourseImporter.parseJson(invalidJson)

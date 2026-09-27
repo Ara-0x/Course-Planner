@@ -23,6 +23,7 @@ object AppModule {
     @Singleton
     fun provideCourseRepository(database: AppDatabase): CourseRepository =
         CourseRepository(
+            db = database,
             courseDao = database.courseDao(),
             sectionDao = database.sectionDao(),
             documentDao = database.documentDao()

@@ -18,7 +18,12 @@ data class ImportSectionItem(
 )
 
 sealed class ImportResult {
-    data class Success(val items: List<ImportItem>, val message: String) : ImportResult()
+    data class Success(
+        val items: List<ImportItem>,
+        val message: String,
+        /** Non-fatal row-level issues (skipped rows); UI shows them as "needs review". */
+        val warnings: List<String> = emptyList()
+    ) : ImportResult()
     data class Failure(val errorMessage: String) : ImportResult()
 }
 
@@ -349,11 +354,8 @@ object CourseImporter {
     }
 
     private fun isValidTime(time: String): Boolean {
-        val parts = time.trim().split(":")
-        if (parts.size != 2) return false
-        val h = parts[0].toIntOrNull() ?: return false
-        val m = parts[1].toIntOrNull() ?: return false
-        return h in 0..23 && m in 0..59
+        // Strict + digit-aware: "۸:۳۰" passes, "abc"/"25:90" fail (never silent 00:00).
+        return ClassSession.parseTimeMinutesOrNull(time) != null
     }
 
     fun getSampleCatalog(): List<ImportItem> {

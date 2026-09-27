@@ -27,12 +27,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -96,6 +98,7 @@ import ir.courseplanner.app.ui.CourseUnitsFilter
 import ir.courseplanner.app.ui.FILTERABLE_DAYS
 import ir.courseplanner.app.ui.components.AddCourseDialog
 import ir.courseplanner.app.ui.components.AddSectionDialog
+import ir.courseplanner.app.ui.components.EditCourseDialog
 
 @Composable
 fun CoursesScreen(
@@ -114,6 +117,7 @@ fun CoursesScreen(
     var showAddCourseDialog by remember { mutableStateOf(false) }
     var courseForAddSection by remember { mutableStateOf<Course?>(null) }
     var courseToDelete by remember { mutableStateOf<Course?>(null) }
+    var courseToEdit by remember { mutableStateOf<Course?>(null) }
 
     val departments = listOf("همه") + allCoursesWithSections.map { it.course.department }.filter { it.isNotBlank() }.distinct()
 
@@ -184,8 +188,8 @@ fun CoursesScreen(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Quick-add by course code: matches inside the hidden portal catalog
-            // (courses not yet in "my courses") appear as compact cards here so the
-            // user never has to scroll through 200+ catalog rows.
+            // (courses not yet in "my courses"). The cards are rendered inside the
+            // LazyColumn below so any number of matches stays scrollable.
             val myCourseIds = remember(allCoursesWithSections) {
                 allCoursesWithSections.filter { cws ->
                     cws.course.isSelectedForGeneration ||
@@ -200,31 +204,6 @@ fun CoursesScreen(
                         (cws.course.code.contains(q, ignoreCase = true) ||
                             cws.course.name.contains(q, ignoreCase = true))
                 }.take(6)
-            }
-
-            AnimatedVisibility(
-                visible = catalogMatches.isNotEmpty(),
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "یافته‌ها در کاتالوگ پرتال (${catalogMatches.size} مورد) — برای افزودن لمس کنید:",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    catalogMatches.forEach { cws ->
-                        CatalogQuickAddCard(
-                            courseWithSections = cws,
-                            sections = allSections.filter { it.course.id == cws.course.id },
-                            onAdd = { viewModel.addCatalogCourseToMine(cws.course.id) }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
             }
 
             // Advanced filter panel (department / degree / units / day):
@@ -598,6 +577,29 @@ fun CoursesScreen(
             }
 
             if (filteredCourses.isEmpty()) {
+                // When the search matches catalog courses, show those scrollable
+                // cards first — the "nothing found" box alone would hide them.
+                if (catalogMatches.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CatalogQuickAddResults(
+                            catalogMatches = catalogMatches,
+                            allSections = allSections,
+                            onAdd = { viewModel.addCatalogCourseToMine(it) }
+                        )
+                        Text(
+                            text = "در «دروس من» چیزی با این مشخصات یافت نشد.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                } else {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -707,6 +709,7 @@ fun CoursesScreen(
                         }
                     }
                 }
+                }
             } else {
                 LazyColumn(
                     state = listState,
@@ -715,6 +718,13 @@ fun CoursesScreen(
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    item(key = "catalog_quick_add") {
+                        CatalogQuickAddResults(
+                            catalogMatches = catalogMatches,
+                            allSections = allSections,
+                            onAdd = { viewModel.addCatalogCourseToMine(it) }
+                        )
+                    }
                     items(filteredCourses, key = { it.course.id }) { cws ->
                         val docCount = allDocs.count { it.course.id == cws.course.id }
                         CourseCard(
@@ -732,6 +742,9 @@ fun CoursesScreen(
                             },
                             onAddSectionClick = {
                                 courseForAddSection = cws.course
+                            },
+                            onEditCourseClick = {
+                                courseToEdit = cws.course
                             },
                             onDeleteCourseClick = {
                                 courseToDelete = cws.course
@@ -791,6 +804,24 @@ fun CoursesScreen(
         )
     }
 
+    // Edit Course Dialog (in-place: sections, enrollments and docs are kept)
+    courseToEdit?.let { targetCourse ->
+        EditCourseDialog(
+            course = targetCourse,
+            onDismiss = { courseToEdit = null },
+            onConfirm = { name, code, department, credits ->
+                viewModel.updateCourse(
+                    courseId = targetCourse.id,
+                    name = name,
+                    code = code,
+                    department = department,
+                    credits = credits
+                )
+                courseToEdit = null
+            }
+        )
+    }
+
     // Delete Course Confirmation
     courseToDelete?.let { targetCourse ->
         AlertDialog(
@@ -828,6 +859,7 @@ private fun CourseCard(
     onToggleSelectedForGeneration: (Boolean) -> Unit,
     onSelectSection: (SectionWithDetails, Boolean) -> Unit,
     onAddSectionClick: () -> Unit,
+    onEditCourseClick: () -> Unit,
     onDeleteCourseClick: () -> Unit,
     onDeleteSectionClick: (SectionWithDetails) -> Unit,
     checkConflict: (SectionWithDetails) -> ir.courseplanner.app.data.model.Conflict?
@@ -967,6 +999,17 @@ private fun CourseCard(
                         }
                     }
 
+                    IconButton(
+                        onClick = onEditCourseClick,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "ویرایش درس",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     IconButton(
                         onClick = onDeleteCourseClick,
                         modifier = Modifier.size(32.dp)
@@ -1297,6 +1340,43 @@ private fun FilterLabelRow(label: String) {
         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+}
+
+/**
+ * Scrollable quick-add results block. Rendered as the first item of the course
+ * list (and in the empty state) so every catalog match is reachable no matter
+ * how many there are.
+ */
+@Composable
+private fun CatalogQuickAddResults(
+    catalogMatches: List<CourseWithSections>,
+    allSections: List<SectionWithDetails>,
+    onAdd: (Long) -> Unit
+) {
+    AnimatedVisibility(
+        visible = catalogMatches.isNotEmpty(),
+        enter = fadeIn(),
+        exit = fadeOut()
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "یافته‌ها در کاتالوگ پرتال (${catalogMatches.size} مورد) — برای افزودن لمس کنید:",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+            catalogMatches.forEach { cws ->
+                CatalogQuickAddCard(
+                    courseWithSections = cws,
+                    sections = allSections.filter { it.course.id == cws.course.id },
+                    onAdd = { onAdd(cws.course.id) }
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
 }
 
 /**

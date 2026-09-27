@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ir.courseplanner.app.data.model.ConflictType
+import ir.courseplanner.app.engine.ScheduleEngine
 import ir.courseplanner.app.ui.AppDestination
 import ir.courseplanner.app.ui.CoursePlannerViewModel
 import ir.courseplanner.app.ui.components.ConflictBanner
@@ -87,6 +88,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val enrolledSections by viewModel.enrolledSections.collectAsStateWithLifecycle()
     val conflicts by viewModel.enrolledConflicts.collectAsStateWithLifecycle()
+    val examWarnings by viewModel.enrolledExamWarnings.collectAsStateWithLifecycle()
     val metrics by viewModel.enrolledMetrics.collectAsStateWithLifecycle()
     val preferences by viewModel.userPreferences.collectAsStateWithLifecycle()
     val allDocs by viewModel.documentsWithCourse.collectAsStateWithLifecycle()
@@ -228,6 +230,28 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+
+        // Today + next class: the most important information comes first.
+        if (enrolledSections.isNotEmpty()) {
+            val calendar = remember { java.util.Calendar.getInstance() }
+            val todayIdx = ScheduleEngine.calendarDayOfWeekToAppDay(
+                calendar.get(java.util.Calendar.DAY_OF_WEEK)
+            )
+            val nowMinutes = calendar.get(java.util.Calendar.HOUR_OF_DAY) * 60 +
+                calendar.get(java.util.Calendar.MINUTE)
+            val todaysClasses = remember(enrolledSections) {
+                ScheduleEngine.sessionsOnDay(enrolledSections, todayIdx)
+            }
+            val nextClass = remember(enrolledSections) {
+                ScheduleEngine.nextUpcomingSession(enrolledSections, todayIdx, nowMinutes)
+            }
+            TodayNextCard(
+                todayIdx = todayIdx,
+                todaysClasses = todaysClasses,
+                nextClass = nextClass,
+                onOpenSchedule = { viewModel.navigateTo(AppDestination.SCHEDULE) }
+            )
         }
 
         // A first-time user needs the guided next step, not four zero-value
@@ -565,7 +589,14 @@ fun HomeScreen(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "${examList.size} آزمون ثبت شده${if (hasExamConflict) " (همراه با تداخل آزمون!)" else ""}",
+                                        text = buildString {
+                                            append("${examList.size} آزمون ثبت شده")
+                                            if (hasExamConflict) {
+                                                append(" (همراه با تداخل آزمون!)")
+                                            } else if (examWarnings.isNotEmpty()) {
+                                                append(" (${examWarnings.size} هشدار ساعت نامشخص)")
+                                            }
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (hasExamConflict) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
                                     )
@@ -669,6 +700,169 @@ fun HomeScreen(
         )
 
         Spacer(modifier = Modifier.height(12.dp))
+    }
+}
+
+/**
+ * "Today" hero: today's classes in time order plus the single next class.
+ * Placed right after the greeting so the most important info needs no scroll.
+ */
+@Composable
+private fun TodayNextCard(
+    todayIdx: Int,
+    todaysClasses: List<ScheduleEngine.UpcomingSession>,
+    nextClass: ScheduleEngine.UpcomingSession?,
+    onOpenSchedule: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 1.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "امروز (${ir.courseplanner.app.data.model.ClassSession.getDayName(todayIdx)})",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                if (todaysClasses.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = "${todaysClasses.size} کلاس",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (todaysClasses.isEmpty()) {
+                Text(
+                    text = "امروز کلاسی نداری.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    todaysClasses.forEach { item ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = item.session.startTime,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.width(52.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.section.courseName,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    softWrap = false
+                                )
+                                if (item.session.location.isNotBlank()) {
+                                    Text(
+                                        text = item.session.location,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                            if (item.session.weekType != ir.courseplanner.app.data.model.WeekType.EVERY_WEEK) {
+                                Text(
+                                    text = item.session.weekType.titleFa,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (nextClass != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            onClick = onOpenSchedule,
+                            role = androidx.compose.ui.semantics.Role.Button
+                        )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (nextClass.ongoing) "در حال برگزاری" else "کلاس بعدی",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = buildString {
+                                    append(nextClass.section.courseName)
+                                    append(" — ")
+                                    if (nextClass.dayOfWeek != todayIdx) {
+                                        append(ir.courseplanner.app.data.model.ClassSession.getDayName(nextClass.dayOfWeek))
+                                        append(" ")
+                                    }
+                                    append(nextClass.session.startTime)
+                                    if (nextClass.session.location.isNotBlank()) {
+                                        append(" • ")
+                                        append(nextClass.session.location)
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import ir.courseplanner.app.data.model.ClassSession
 import ir.courseplanner.app.data.model.CourseSection
 import ir.courseplanner.app.data.model.SectionWithDetails
@@ -24,6 +25,9 @@ interface SectionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSessions(sessions: List<ClassSession>): List<Long>
+
+    @Update
+    suspend fun updateSection(section: CourseSection)
 
     @Transaction
     @Query("SELECT * FROM course_sections WHERE isEnrolled = 1")
@@ -48,6 +52,13 @@ interface SectionDao {
 
     @Query("DELETE FROM course_sections WHERE id = :sectionId")
     suspend fun deleteSectionById(sectionId: Long)
+
+    /** Sections of one course, for re-import sync matched by sectionCode. */
+    @Query("SELECT * FROM course_sections WHERE courseId = :courseId")
+    suspend fun getSectionsByCourseId(courseId: Long): List<CourseSection>
+
+    @Query("DELETE FROM class_sessions WHERE sectionId = :sectionId")
+    suspend fun deleteSessionsBySectionId(sectionId: Long)
 
     @Query("DELETE FROM course_sections")
     suspend fun deleteAllSections()

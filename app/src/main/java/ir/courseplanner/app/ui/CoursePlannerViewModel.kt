@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -58,7 +59,11 @@ data class GenerationState(
     val combinations: List<ScoredSchedule> = emptyList(),
     val rawCombinations: List<List<SectionWithDetails>> = emptyList(),
     val currentIndex: Int = 0,
-    val message: String? = null
+    val message: String? = null,
+    /** Selected courses with zero usable sections (reported, never silently dropped). */
+    val skippedCourses: List<String> = emptyList(),
+    /** True when the search hit its safety cap (best-so-far is still shown). */
+    val truncated: Boolean = false
 )
 
 enum class CourseStatusFilter(val titleFa: String) {
@@ -246,17 +251,20 @@ class CoursePlannerViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Enrolled sections conflicts
+    // Enrolled sections conflicts (definite only — exam same-day unknowns are warnings).
     val enrolledConflicts: StateFlow<List<Conflict>> = enrolledSections
-        .combine(MutableStateFlow(Unit)) { enrolled, _ ->
-            ScheduleEngine.findAllConflicts(enrolled)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .map { ScheduleEngine.findAllConflicts(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Same exam day with incomplete times — shown as warnings, never blocking. */
+    val enrolledExamWarnings: StateFlow<List<Conflict>> = enrolledSections
+        .map { ScheduleEngine.findExamWarnings(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Enrolled metrics
     val enrolledMetrics: StateFlow<ScheduleMetrics> = enrolledSections
-        .combine(MutableStateFlow(Unit)) { enrolled, _ ->
-            ScheduleEngine.computeMetrics(enrolled)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ScheduleMetrics(0, 0, 0, 0f, 0))
+        .map { ScheduleEngine.computeMetrics(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ScheduleMetrics(0, 0, 0, 0f, 0))
 
     // Schedule Generator State
     private val _generationState = MutableStateFlow(GenerationState())
@@ -393,31 +401,49 @@ class CoursePlannerViewModel @Inject constructor(
                 return@launch
             }
 
-            // Group sections with details for each selected course
+            // Group sections with details for each selected course (names kept
+            // so courses without any usable section can be reported by name).
             val allSecs = allSections.value
-            val courseGroups = courses.map { cws ->
-                allSecs.filter { it.course.id == cws.course.id }
+            val generatorCourses = courses.map { cws ->
+                ir.courseplanner.app.engine.GeneratorCourse(
+                    courseName = cws.course.name,
+                    sections = allSecs.filter { it.course.id == cws.course.id }
+                )
             }
 
-            val validSchedules = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                ScheduleEngine.generateConflictFreeSchedules(courseGroups)
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                ScheduleEngine.generateTopSchedules(generatorCourses, _optimizationPreference.value)
             }
 
-            if (validSchedules.isEmpty()) {
+            if (result.ranked.isEmpty()) {
+                val detail = if (result.skippedCourses.isNotEmpty()) {
+                    " برای این دروس هیچ گروه قابل‌استفاده‌ای وجود ندارد: ${result.skippedCourses.joinToString("، ")}."
+                } else {
+                    " همزمانی ساعات کلاس‌ها یا تداخل روز امتحانات مانع ساخت برنامه است."
+                }
                 _generationState.value = GenerationState(
                     isGenerated = true,
                     combinations = emptyList(),
                     rawCombinations = emptyList(),
-                    message = "هیچ ترکیب بدون تداخلی برای دروس انتخاب شده یافت نشد. همزمانی ساعات کلاس‌ها یا تداخل روز امتحانات مانع ساخت برنامه است."
+                    message = "هیچ ترکیب بدون تداخلی برای دروس انتخاب شده یافت نشد." + detail,
+                    skippedCourses = result.skippedCourses
                 )
             } else {
-                val ranked = ScheduleEngine.rankSchedules(validSchedules, _optimizationPreference.value)
+                val skippedNote = if (result.skippedCourses.isNotEmpty()) {
+                    " این دروس گروه قابل‌استفاده‌ای نداشتند و لحاظ نشدند: ${result.skippedCourses.joinToString("، ")}."
+                } else ""
+                val truncatedNote = if (result.truncated) {
+                    " جست‌وجو به سقف امن رسید؛ بهترین‌های یافت‌شده نمایش داده می‌شود."
+                } else ""
                 _generationState.value = GenerationState(
                     isGenerated = true,
-                    combinations = ranked,
-                    rawCombinations = validSchedules,
+                    combinations = result.ranked,
+                    rawCombinations = result.ranked.map { it.schedule },
                     currentIndex = 0,
-                    message = "${validSchedules.size} برنامه بدون تداخل تولید و بر اساس اولویت بهینه‌سازی رتبه‌بندی شد."
+                    message = "${result.totalValid} ترکیب بدون تداخل بررسی شد؛ ${result.ranked.size} پیشنهاد برتر نمایش داده می‌شود." +
+                        skippedNote + truncatedNote,
+                    skippedCourses = result.skippedCourses,
+                    truncated = result.truncated
                 )
             }
         }
@@ -537,6 +563,38 @@ class CoursePlannerViewModel @Inject constructor(
             repository.deleteCourse(courseId)
             _userMessage.value = "درس «$courseName» حذف شد."
             _isErrorMessage.value = false
+        }
+    }
+
+    fun updateCourse(courseId: Long, name: String, code: String, department: String, credits: Int) {
+        if (name.isBlank()) {
+            _userMessage.value = "نام درس نمی‌تواند خالی باشد."
+            _isErrorMessage.value = true
+            return
+        }
+        viewModelScope.launch {
+            when (
+                repository.updateCourseDetails(
+                    courseId = courseId,
+                    name = name.trim(),
+                    code = code.trim(),
+                    department = department.trim(),
+                    credits = credits.coerceIn(1, 20)
+                )
+            ) {
+                CourseRepository.UpdateCourseResult.Success -> {
+                    _userMessage.value = "تغییرات درس «${name.trim()}» ذخیره شد."
+                    _isErrorMessage.value = false
+                }
+                CourseRepository.UpdateCourseResult.DuplicateCode -> {
+                    _userMessage.value = "کد «${code.trim()}» قبلاً برای درس دیگری ثبت شده است."
+                    _isErrorMessage.value = true
+                }
+                CourseRepository.UpdateCourseResult.NotFound -> {
+                    _userMessage.value = "درس موردنظر یافت نشد؛ ممکن است حذف شده باشد."
+                    _isErrorMessage.value = true
+                }
+            }
         }
     }
 

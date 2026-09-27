@@ -99,24 +99,23 @@ fun WeeklyTimetable(
     } // "grid" or "day"
     var inspectItem by remember { mutableStateOf<TimetableItem?>(null) }
 
-    // Map each course code to a stable distinct color
-    val courseColors = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
-        CourseColorListDark
-    } else {
-        CourseColorListLight
-    }
-    val uniqueCodes = sections.map { it.courseCode }.distinct()
-    val colorMap = uniqueCodes.mapIndexed { idx, code ->
-        code to courseColors[idx % courseColors.size]
-    }.toMap()
-
-    val allItems = sections.flatMap { sec ->
-        sec.sessions.map { sess ->
-            TimetableItem(
-                section = sec,
-                session = sess,
-                color = colorMap[sec.courseCode] ?: Color(0xFF2563EB)
-            )
+    // Map each course code to a stable distinct color. Memoized so large
+    // timetables are not rebuilt on every recomposition.
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val allItems = remember(sections, isDark) {
+        val courseColors = if (isDark) CourseColorListDark else CourseColorListLight
+        val uniqueCodes = sections.map { it.courseCode }.distinct()
+        val colorMap = uniqueCodes.mapIndexed { idx, code ->
+            code to courseColors[idx % courseColors.size]
+        }.toMap()
+        sections.flatMap { sec ->
+            sec.sessions.map { sess ->
+                TimetableItem(
+                    section = sec,
+                    session = sess,
+                    color = colorMap[sec.courseCode] ?: Color(0xFF2563EB)
+                )
+            }
         }
     }
 

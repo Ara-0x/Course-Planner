@@ -97,6 +97,98 @@ class PooyaHtmlParserTest {
     }
 
     @Test
+    fun `reordered columns are resolved from the header row`() {
+        val html = """
+<html><body><table border="1"><tbody>
+<tr><th>نام درس</th><th>کد درس</th><th>واحد</th><th>گروه</th><th>ظرفیت</th><th>ثبت نام شده</th><th>دانشکده</th><th>نام استاد</th><th>جزئیات</th></tr>
+<tr><td>ریاضی عمومی</td><td>10103</td><td>3.00</td><td>1</td><td>35</td><td>27</td><td>دانشکده اصلي</td><td>ملااحمدیان</td><td><img src="info.gif" title=""></td></tr>
+</tbody></table></body></html>
+        """.trimIndent()
+        val result = PooyaHtmlParser.parsePortalHtml(html)
+        assertTrue(result is ImportResult.Success)
+        val items = (result as ImportResult.Success).items
+        assertEquals(1, items.size)
+        assertEquals("10103", items[0].course.code)
+        assertEquals("ریاضی عمومی", items[0].course.name)
+        assertEquals(3, items[0].course.credits)
+        assertEquals("1", items[0].sections[0].section.sectionCode)
+        assertEquals(35, items[0].sections[0].section.capacity)
+    }
+
+    @Test
+    fun `missing optional column does not break parsing`() {
+        val html = """
+<html><body><table border="1"><tbody>
+<tr><th>ردیف</th><th>شماره درس</th><th>گروه</th><th>نام درس</th><th>واحد</th><th>ثبت نام شده</th><th>دانشکده</th><th>نام استاد</th><th>&nbsp;</th></tr>
+<tr><td>1</td><td>10103</td><td>1</td><td>ریاضی عمومی</td><td>3.00</td><td>27</td><td>دانشکده اصلي</td><td>ملااحمدیان</td><td><img src="info.gif" title=""></td></tr>
+</tbody></table></body></html>
+        """.trimIndent()
+        val result = PooyaHtmlParser.parsePortalHtml(html)
+        assertTrue(result is ImportResult.Success)
+        val items = (result as ImportResult.Success).items
+        assertEquals(1, items.size)
+        assertEquals(0, items[0].sections[0].section.capacity)
+    }
+
+    @Test
+    fun `invalid rows are skipped with warnings instead of silent defaults`() {
+        val html = """
+<html><body><table border="1"><tbody>
+<tr><th>ردیف</th><th>شماره درس</th><th>گروه</th><th>نام درس</th><th>واحد</th><th>ثبت نام شده</th><th>ظرفیت</th><th>دانشکده</th><th>نام استاد</th><th>&nbsp;</th></tr>
+<tr><td>1</td><td></td><td>1</td><td>بی‌کد</td><td>3.00</td><td>0</td><td>10</td><td>دانشکده اصلي</td><td>استاد</td><td></td></tr>
+<tr><td>2</td><td>99999</td><td>1</td><td>واحد خراب</td><td>abc</td><td>0</td><td>10</td><td>دانشکده اصلي</td><td>استاد</td><td></td></tr>
+<tr><td>3</td><td>10103</td><td>1</td><td>ریاضی عمومی</td><td>3.00</td><td>27</td><td>35</td><td>دانشکده اصلي</td><td>ملااحمدیان</td><td></td></tr>
+</tbody></table></body></html>
+        """.trimIndent()
+        val result = PooyaHtmlParser.parsePortalHtml(html)
+        assertTrue(result is ImportResult.Success)
+        val success = result as ImportResult.Success
+        assertEquals(1, success.items.size)
+        assertEquals("10103", success.items[0].course.code)
+        assertEquals(2, success.warnings.size)
+        assertTrue(success.message.contains("نیاز به بررسی"))
+    }
+
+    @Test
+    fun `out of range session time is skipped not stored`() {
+        val html = """
+<html><body><table border="1"><tbody>
+<tr><th>ردیف</th><th>شماره درس</th><th>گروه</th><th>نام درس</th><th>واحد</th><th>ثبت نام شده</th><th>ظرفیت</th><th>دانشکده</th><th>نام استاد</th><th>&nbsp;</th></tr>
+<tr><td>1</td><td>10103</td><td>1</td><td>ریاضی عمومی</td><td>3.00</td><td>0</td><td>10</td><td>دانشکده اصلي</td><td>استاد</td>
+<td><img src="info.gif" title="header=[x] body=[مقطع: کارشناسی گروه آموزشی: كامپيوتر جلسه اول روز: دوشنبه ساعت 25(هر هفته به مدت 120 دقیقه در کلاس 1) شروع زوج]"></td></tr>
+</tbody></table></body></html>
+        """.trimIndent()
+        val result = PooyaHtmlParser.parsePortalHtml(html)
+        assertTrue(result is ImportResult.Success)
+        val items = (result as ImportResult.Success).items
+        assertEquals(1, items.size)
+        assertTrue(items[0].sections[0].sessions.isEmpty())
+    }
+
+    @Test
+    fun `exam duration produces a real end time`() {
+        val html = """
+<html><body><table border="1"><tbody>
+<tr><th>ردیف</th><th>شماره درس</th><th>گروه</th><th>نام درس</th><th>واحد</th><th>ثبت نام شده</th><th>ظرفیت</th><th>دانشکده</th><th>نام استاد</th><th>&nbsp;</th></tr>
+<tr><td>1</td><td>10103</td><td>1</td><td>ریاضی عمومی</td><td>3.00</td><td>0</td><td>10</td><td>دانشکده اصلي</td><td>استاد</td>
+<td><img src="info.gif" title="header=[x] body=[مقطع: کارشناسی گروه آموزشی: كامپيوتر امتحان روز: شنبه ساعت 9 به مدت 120 دقیقه در کلاس 10 به تاریخ 1403/10/20]"></td></tr>
+</tbody></table></body></html>
+        """.trimIndent()
+        val result = PooyaHtmlParser.parsePortalHtml(html)
+        assertTrue(result is ImportResult.Success)
+        val sec = (result as ImportResult.Success).items[0].sections[0].section
+        assertEquals("1403/10/20", sec.examDate)
+        assertEquals("09:00", sec.examStartTime)
+        assertEquals("11:00", sec.examEndTime)
+    }
+
+    @Test
+    fun `malformed html never throws`() {
+        val result = PooyaHtmlParser.parsePortalHtml("<table><tr><td>ناقص")
+        assertTrue(result is ImportResult.Failure || result is ImportResult.Success)
+    }
+
+    @Test
     fun `reimport message reports course and group counts`() {
         val result = PooyaHtmlParser.parsePortalHtml(SAMPLE_HTML)
         val message = (result as ImportResult.Success).message
