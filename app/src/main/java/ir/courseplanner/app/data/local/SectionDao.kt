@@ -53,6 +53,12 @@ interface SectionDao {
     @Query("DELETE FROM course_sections WHERE id = :sectionId")
     suspend fun deleteSectionById(sectionId: Long)
 
+    @Query("SELECT * FROM course_sections WHERE id = :sectionId LIMIT 1")
+    suspend fun getSectionById(sectionId: Long): CourseSection?
+
+    @Query("SELECT * FROM course_sections WHERE courseId = :courseId AND sectionCode = :code LIMIT 1")
+    suspend fun getSectionByCourseAndCode(courseId: Long, code: String): CourseSection?
+
     /** Sections of one course, for re-import sync matched by sectionCode. */
     @Query("SELECT * FROM course_sections WHERE courseId = :courseId")
     suspend fun getSectionsByCourseId(courseId: Long): List<CourseSection>

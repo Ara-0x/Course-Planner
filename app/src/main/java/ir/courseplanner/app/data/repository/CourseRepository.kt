@@ -209,6 +209,46 @@ class CourseRepository(
         sectionDao.deleteSectionById(sectionId)
     }
 
+    sealed interface UpdateSectionResult {
+        data object Success : UpdateSectionResult
+        data object DuplicateCode : UpdateSectionResult
+        data object NotFound : UpdateSectionResult
+    }
+
+    /**
+     * Updates a section/group in place: code, instructor, exam fields plus the
+     * full session list (replaced atomically). Enrollment flag is preserved so
+     * editing an enrolled group never drops it from the weekly program.
+     */
+    suspend fun updateSectionDetails(
+        sectionId: Long,
+        sectionCode: String,
+        instructor: String,
+        examDate: String,
+        examStartTime: String,
+        examEndTime: String,
+        sessions: List<ClassSession>
+    ): UpdateSectionResult = db.withTransaction {
+        val current = sectionDao.getSectionById(sectionId)
+            ?: return@withTransaction UpdateSectionResult.NotFound
+        val clash = sectionDao.getSectionByCourseAndCode(current.courseId, sectionCode.trim())
+        if (clash != null && clash.id != sectionId) {
+            return@withTransaction UpdateSectionResult.DuplicateCode
+        }
+        sectionDao.updateSection(
+            current.copy(
+                sectionCode = sectionCode.trim(),
+                instructor = instructor.trim(),
+                examDate = examDate.trim(),
+                examStartTime = examStartTime.trim(),
+                examEndTime = examEndTime.trim()
+            )
+        )
+        sectionDao.deleteSessionsBySectionId(sectionId)
+        sectionDao.insertSessions(sessions.map { it.copy(id = 0, sectionId = sectionId) })
+        UpdateSectionResult.Success
+    }
+
     suspend fun toggleCourseSelectedForGeneration(courseId: Long, isSelected: Boolean) {
         courseDao.setCourseSelectedForGeneration(courseId, isSelected)
     }

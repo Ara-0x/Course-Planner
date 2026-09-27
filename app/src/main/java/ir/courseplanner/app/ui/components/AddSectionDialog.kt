@@ -66,18 +66,29 @@ fun AddSectionDialog(
         examStartTime: String,
         examEndTime: String,
         sessions: List<ManualSessionInput>
-    ) -> Unit
+    ) -> Unit,
+    // Edit mode: prefill from an existing group and relabel the dialog.
+    // Null (default) = add mode, exactly as before.
+    initialSectionCode: String? = null,
+    initialInstructor: String? = null,
+    initialExamDate: String? = null,
+    initialExamTimeRange: String? = null,
+    initialSessions: List<ManualSessionInput>? = null,
+    dialogTitle: String? = null,
+    confirmLabel: String? = null
 ) {
-    var sectionCode by remember { mutableStateOf("02") }
-    var instructor by remember { mutableStateOf("") }
-    var examDate by remember { mutableStateOf("") }
-    var examTimeRange by remember { mutableStateOf("") }
+    var sectionCode by remember(course, initialSectionCode) { mutableStateOf(initialSectionCode ?: "02") }
+    var instructor by remember(course, initialInstructor) { mutableStateOf(initialInstructor ?: "") }
+    var examDate by remember(course, initialExamDate) { mutableStateOf(initialExamDate ?: "") }
+    var examTimeRange by remember(course, initialExamTimeRange) { mutableStateOf(initialExamTimeRange ?: "") }
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val sessions = remember {
+    val sessions = remember(course, initialSessions) {
         mutableStateListOf(
-            ManualSessionInput(dayOfWeek = 0, startTime = "08:00", endTime = "10:00", location = "", weekType = WeekType.EVERY_WEEK)
+            *(initialSessions?.takeIf { it.isNotEmpty() }?.toTypedArray() ?: arrayOf(
+                ManualSessionInput(dayOfWeek = 0, startTime = "08:00", endTime = "10:00", location = "", weekType = WeekType.EVERY_WEEK)
+            ))
         )
     }
 
@@ -104,7 +115,7 @@ fun AddSectionDialog(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "افزودن گروه جدید به «${course.name}»",
+                        text = dialogTitle ?: "افزودن گروه جدید به «${course.name}»",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }
@@ -399,7 +410,7 @@ fun AddSectionDialog(
                     )
                 }
             ) {
-                Text("افزودن این گروه")
+                Text(confirmLabel ?: "افزودن این گروه")
             }
         },
         dismissButton = {

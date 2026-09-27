@@ -90,6 +90,7 @@ import ir.courseplanner.app.data.model.CourseWithSections
 import ir.courseplanner.app.data.model.SectionWithDetails
 import ir.courseplanner.app.data.model.WeekType
 import ir.courseplanner.app.ui.AppDestination
+import ir.courseplanner.app.ui.ManualSessionInput
 import ir.courseplanner.app.ui.CourseDegreeFilter
 import ir.courseplanner.app.ui.CoursePlannerViewModel
 import ir.courseplanner.app.ui.CourseSortOrder
@@ -119,6 +120,7 @@ fun CoursesScreen(
     var courseForAddSection by remember { mutableStateOf<Course?>(null) }
     var courseToDelete by remember { mutableStateOf<Course?>(null) }
     var courseToEdit by remember { mutableStateOf<Course?>(null) }
+    var sectionToEdit by remember { mutableStateOf<SectionWithDetails?>(null) }
 
     val departments = remember(allCoursesWithSections) {
         listOf("همه") + allCoursesWithSections.map { it.course.department }.filter { it.isNotBlank() }.distinct()
@@ -767,6 +769,9 @@ fun CoursesScreen(
                             onDeleteSectionClick = { sec ->
                                 viewModel.deleteSection(sec.section.id, sec.sectionCode)
                             },
+                            onEditSectionClick = { sec ->
+                                sectionToEdit = sec
+                            },
                             checkConflict = { sec ->
                                 viewModel.checkConflictForCandidate(sec)
                             }
@@ -816,6 +821,41 @@ fun CoursesScreen(
                 )
                 courseForAddSection = null
             }
+        )
+    }
+
+    // Edit Section Dialog (same form as add, prefilled; enrollment is kept)
+    sectionToEdit?.let { targetSection ->
+        AddSectionDialog(
+            course = targetSection.course,
+            onDismiss = { sectionToEdit = null },
+            onConfirm = { secCode, instructor, examDate, examStart, examEnd, sessions ->
+                viewModel.updateSection(
+                    sectionId = targetSection.section.id,
+                    sectionCode = secCode,
+                    instructor = instructor,
+                    examDate = examDate,
+                    examStartTime = examStart,
+                    examEndTime = examEnd,
+                    sessions = sessions
+                )
+                sectionToEdit = null
+            },
+            initialSectionCode = targetSection.section.sectionCode,
+            initialInstructor = targetSection.section.instructor,
+            initialExamDate = targetSection.section.examDate,
+            initialExamTimeRange = targetSection.examTimeRange,
+            initialSessions = targetSection.sessions.map { sess ->
+                ManualSessionInput(
+                    dayOfWeek = sess.dayOfWeek,
+                    startTime = sess.startTime,
+                    endTime = sess.endTime,
+                    location = sess.location,
+                    weekType = sess.weekType
+                )
+            },
+            dialogTitle = "ویرایش گروه ${targetSection.section.sectionCode} • ${targetSection.course.name}",
+            confirmLabel = "ذخیره تغییرات"
         )
     }
 
@@ -878,6 +918,7 @@ private fun CourseCard(
     onEditCourseClick: () -> Unit,
     onDeleteCourseClick: () -> Unit,
     onDeleteSectionClick: (SectionWithDetails) -> Unit,
+    onEditSectionClick: (SectionWithDetails) -> Unit,
     checkConflict: (SectionWithDetails) -> ir.courseplanner.app.data.model.Conflict?
 ) {
     val course = courseWithSections.course
@@ -1095,7 +1136,8 @@ private fun CourseCard(
                         conflict = conflict,
                         canDeleteSection = sectionsWithDetails.size > 1,
                         onToggleEnroll = { onSelectSection(sec, !isEnrolled) },
-                        onDeleteSection = { onDeleteSectionClick(sec) }
+                        onDeleteSection = { onDeleteSectionClick(sec) },
+                        onEditSection = { onEditSectionClick(sec) }
                     )
                 }
             }
@@ -1110,7 +1152,8 @@ private fun SectionItem(
     conflict: ir.courseplanner.app.data.model.Conflict?,
     canDeleteSection: Boolean,
     onToggleEnroll: () -> Unit,
-    onDeleteSection: () -> Unit
+    onDeleteSection: () -> Unit,
+    onEditSection: () -> Unit
 ) {
     val borderColor by animateColorAsState(
         targetValue = when {
@@ -1229,6 +1272,17 @@ private fun SectionItem(
                         }
                     }
 
+                    IconButton(
+                        onClick = onEditSection,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "ویرایش گروه",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                     if (canDeleteSection) {
                         IconButton(
                             onClick = onDeleteSection,

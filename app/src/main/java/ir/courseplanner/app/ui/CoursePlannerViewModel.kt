@@ -619,6 +619,63 @@ class CoursePlannerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Edits a section/group in place (code, instructor, exam, sessions).
+     * Enrollment is preserved by the repository, so editing an enrolled group
+     * never drops it from the weekly program.
+     */
+    fun updateSection(
+        sectionId: Long,
+        sectionCode: String,
+        instructor: String,
+        examDate: String,
+        examStartTime: String,
+        examEndTime: String,
+        sessions: List<ManualSessionInput>
+    ) {
+        if (sectionCode.isBlank()) {
+            _userMessage.value = "کد گروه نمی‌تواند خالی باشد."
+            _isErrorMessage.value = true
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val sessionEntities = sessions.map { input ->
+                ClassSession(
+                    sectionId = sectionId,
+                    dayOfWeek = input.dayOfWeek,
+                    startTime = input.startTime.trim(),
+                    endTime = input.endTime.trim(),
+                    location = input.location.trim(),
+                    weekType = input.weekType
+                )
+            }
+            when (
+                repository.updateSectionDetails(
+                    sectionId = sectionId,
+                    sectionCode = sectionCode,
+                    instructor = instructor,
+                    examDate = examDate,
+                    examStartTime = examStartTime,
+                    examEndTime = examEndTime,
+                    sessions = sessionEntities
+                )
+            ) {
+                CourseRepository.UpdateSectionResult.Success -> {
+                    _userMessage.value = "تغییرات گروه «${sectionCode.trim()}» ذخیره شد."
+                    _isErrorMessage.value = false
+                }
+                CourseRepository.UpdateSectionResult.DuplicateCode -> {
+                    _userMessage.value = "کد گروه «${sectionCode.trim()}» قبلاً برای همین درس ثبت شده است."
+                    _isErrorMessage.value = true
+                }
+                CourseRepository.UpdateSectionResult.NotFound -> {
+                    _userMessage.value = "گروه موردنظر یافت نشد؛ ممکن است حذف شده باشد."
+                    _isErrorMessage.value = true
+                }
+            }
+        }
+    }
+
     fun importData(content: String, isJson: Boolean, clearExisting: Boolean) {
         val result = if (isJson) {
             CourseImporter.parseJson(content)

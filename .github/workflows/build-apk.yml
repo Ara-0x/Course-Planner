@@ -68,8 +68,8 @@ jobs:
           echo "APK=$APK"
           ls -lh app/build/outputs/apk/debug/
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 5
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='11'|versionName='2.2.0'" \
-            || (echo "::error::APK version mismatch: expected versionCode 11 / versionName 2.2.0. Stale build?"; exit 1)
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='12'|versionName='2.2.1'" \
+            || (echo "::error::APK version mismatch: expected versionCode 12 / versionName 2.2.1. Stale build?"; exit 1)
 
       - name: Prepare APK Asset (unique name busts CDN/browser cache)
         run: |

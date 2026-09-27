@@ -119,4 +119,43 @@ class ScheduleParityTest {
         assertTrue(ScheduleEngine.occursInWeek(odd, ScheduleEngine.WeekParity.ODD))
         assertTrue(ScheduleEngine.occursInWeek(odd, null))
     }
+
+    @Test
+    fun `today list and next session respect week parity`() {
+        val oddOnly = section(1, 0, "08:00", "10:00", WeekType.ODD_WEEKS)
+        val evenOnly = section(2, 0, "08:00", "10:00", WeekType.EVEN_WEEKS)
+        val both = listOf(oddOnly, evenOnly)
+
+        // Even academic week: only the even session is today / ongoing.
+        val evenToday = ScheduleEngine.sessionsOnDay(both, 0, ScheduleEngine.WeekParity.EVEN)
+        assertEquals(1, evenToday.size)
+        assertEquals(WeekType.EVEN_WEEKS, evenToday[0].session.weekType)
+        val evenNext = ScheduleEngine.nextUpcomingSession(both, 0, 510, ScheduleEngine.WeekParity.EVEN)
+        assertNotNull(evenNext)
+        assertEquals(WeekType.EVEN_WEEKS, evenNext?.session?.weekType)
+        assertEquals(true, evenNext?.ongoing)
+
+        // Odd academic week: only the odd session is today / ongoing.
+        val oddToday = ScheduleEngine.sessionsOnDay(both, 0, ScheduleEngine.WeekParity.ODD)
+        assertEquals(1, oddToday.size)
+        assertEquals(WeekType.ODD_WEEKS, oddToday[0].session.weekType)
+        val oddNext = ScheduleEngine.nextUpcomingSession(both, 0, 510, ScheduleEngine.WeekParity.ODD)
+        assertNotNull(oddNext)
+        assertEquals(WeekType.ODD_WEEKS, oddNext?.session?.weekType)
+        assertEquals(true, oddNext?.ongoing)
+
+        // Unknown parity: legacy unfiltered behavior is kept.
+        assertEquals(2, ScheduleEngine.sessionsOnDay(both, 0, null).size)
+        assertNotNull(ScheduleEngine.nextUpcomingSession(both, 0, 510, null))
+    }
+
+    @Test
+    fun `live card caps display length at ninety minutes`() {
+        val twoHour = ClassSession(sectionId = 0, dayOfWeek = 0, startTime = "08:00", endTime = "10:00")
+        assertEquals(90, ScheduleEngine.LIVE_CARD_DISPLAY_MINUTES)
+        // 08:00 + 90 min = 09:30 = 570 minutes from midnight.
+        assertEquals(570, ScheduleEngine.displayEndMinutes(twoHour))
+        val short = twoHour.copy(startTime = "08:00", endTime = "09:00")
+        assertEquals(540, ScheduleEngine.displayEndMinutes(short))
+    }
 }

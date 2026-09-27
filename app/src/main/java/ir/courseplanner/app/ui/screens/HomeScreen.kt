@@ -240,12 +240,6 @@ fun HomeScreen(
             )
             val nowMinutes = calendar.get(java.util.Calendar.HOUR_OF_DAY) * 60 +
                 calendar.get(java.util.Calendar.MINUTE)
-            val todaysClasses = remember(enrolledSections) {
-                ScheduleEngine.sessionsOnDay(enrolledSections, todayIdx)
-            }
-            val nextClass = remember(enrolledSections) {
-                ScheduleEngine.nextUpcomingSession(enrolledSections, todayIdx, nowMinutes)
-            }
             val weekInfo = remember(
                 preferences.semesterStartEpochDay,
                 preferences.firstWeekIsOdd
@@ -256,11 +250,40 @@ fun HomeScreen(
                     preferences.firstWeekIsOdd
                 )
             }
+            // Live lookups: what the enrolled program says about right now.
+            // Parity-aware: an odd-week session must never show as ongoing/today
+            // in an even academic week (and vice versa); unknown parity = show all.
+            val todaysClasses = remember(enrolledSections, weekInfo) {
+                ScheduleEngine.sessionsOnDay(enrolledSections, todayIdx, weekInfo?.parity)
+            }
+            val nextClass = remember(enrolledSections, weekInfo) {
+                ScheduleEngine.nextUpcomingSession(
+                    sections = enrolledSections,
+                    dayOfWeek = todayIdx,
+                    nowMinutes = nowMinutes,
+                    todayParity = weekInfo?.parity,
+                    parityForOffset = if (weekInfo == null) null else { offsetDays: Int ->
+                        val startEpoch = preferences.semesterStartEpochDay
+                        if (startEpoch == null) null else {
+                            val todayEpochDay = ir.courseplanner.app.util.JalaliDate.todayEpochDay()
+                            val futureWeekNumber =
+                                ((todayEpochDay - startEpoch + offsetDays) / 7 + 1).toInt()
+                            val isEven = if (preferences.firstWeekIsOdd) futureWeekNumber % 2 == 0
+                            else futureWeekNumber % 2 == 1
+                            if (isEven) ScheduleEngine.WeekParity.EVEN
+                            else ScheduleEngine.WeekParity.ODD
+                        }
+                    }
+                )
+            }
             TodayNextCard(
                 todayIdx = todayIdx,
                 todaysClasses = todaysClasses,
                 nextClass = nextClass,
                 weekLabel = weekInfo?.let { "هفته ${it.number} • ${it.parity.titleFa}" },
+                // The next-class row itself is NOT clickable (informational only),
+                // so an ongoing class never opens the builder. This callback only
+                // drives the «مشاهده برنامه هفتگی» button inside the card.
                 onOpenSchedule = { viewModel.navigateTo(AppDestination.SCHEDULE) }
             )
         }
@@ -853,15 +876,21 @@ private fun TodayNextCard(
 
             if (nextClass != null) {
                 Spacer(modifier = Modifier.height(10.dp))
+                // Informational row only — intentionally NOT clickable, so an
+                // ongoing class never drops the user into the schedule builder.
+                // The 90-minute teaching window applies to the LIVE (ongoing) card
+                // only; a future "next class" still shows its real end time, and
+                // the weekly timetable always keeps the full 2-hour slot.
+                val displayEndText = if (nextClass.ongoing) {
+                    val displayEnd = ScheduleEngine.displayEndMinutes(nextClass.session)
+                    "%02d:%02d".format(displayEnd / 60, displayEnd % 60)
+                } else {
+                    nextClass.session.endTime
+                }
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            onClick = onOpenSchedule,
-                            role = androidx.compose.ui.semantics.Role.Button
-                        )
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
@@ -889,6 +918,8 @@ private fun TodayNextCard(
                                         append(" ")
                                     }
                                     append(nextClass.session.startTime)
+                                    append(" تا ")
+                                    append(displayEndText)
                                     if (nextClass.session.location.isNotBlank()) {
                                         append(" • ")
                                         append(nextClass.session.location)
@@ -903,7 +934,23 @@ private fun TodayNextCard(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            TodayTimetableButton(onOpenSchedule = onOpenSchedule)
         }
+    }
+}
+
+/**
+ * Weekly timetable entry — the ONLY navigation out of the Today hero.
+ * The today list and the next-class row above are informational only
+ * (deliberately not clickable) so an ongoing class can never drop the
+ * user into the schedule builder by accident.
+ */
+@Composable
+private fun TodayTimetableButton(onOpenSchedule: () -> Unit) {
+    OutlinedButton(onClick = onOpenSchedule, modifier = Modifier.fillMaxWidth()) {
+        Text("مشاهده برنامه هفتگی")
     }
 }
 

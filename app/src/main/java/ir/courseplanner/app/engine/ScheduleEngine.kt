@@ -529,13 +529,17 @@ object ScheduleEngine {
         val ongoing: Boolean
     )
 
-    /** Today's sessions sorted by start time (pure; UI supplies the weekday). */
+    /** Today's sessions sorted by start time (pure; UI supplies the weekday).
+     * When [currentParity] is known, only sessions that actually meet in this
+     * academic week are returned (an odd-week class is NOT today's class in an
+     * even week). Null keeps the legacy unfiltered behavior. */
     fun sessionsOnDay(
         sections: List<SectionWithDetails>,
-        dayOfWeek: Int
+        dayOfWeek: Int,
+        currentParity: WeekParity? = null
     ): List<UpcomingSession> {
         return sections.flatMap { sec ->
-            sec.sessions.filter { it.dayOfWeek == dayOfWeek }
+            sec.sessions.filter { it.dayOfWeek == dayOfWeek && occursInWeek(it, currentParity) }
                 .map { UpcomingSession(sec, it, dayOfWeek, ongoing = false) }
         }.sortedBy { it.session.startMinutes }
     }
@@ -544,16 +548,25 @@ object ScheduleEngine {
      * Next upcoming class at/after ([dayOfWeek], [nowMinutes]), scanning the
      * coming 7 days. A currently-running class counts as "next" (ongoing).
      * Null when nothing is scheduled at all.
+     *
+     * [todayParity] filters today's sessions by academic week parity (odd-week
+     * classes never count as ongoing in an even week). [parityForOffset] gives
+     * the parity of a future day N days ahead; when null, future days keep the
+     * legacy unfiltered behavior. Both default to null (no filtering).
      */
     fun nextUpcomingSession(
         sections: List<SectionWithDetails>,
         dayOfWeek: Int,
-        nowMinutes: Int
+        nowMinutes: Int,
+        todayParity: WeekParity? = null,
+        parityForOffset: ((offsetDays: Int) -> WeekParity?)? = null
     ): UpcomingSession? {
         for (offset in 0..6) {
+            val parity = if (offset == 0) todayParity else parityForOffset?.invoke(offset)
             val day = (dayOfWeek + offset) % 7
             val todays = sections.flatMap { sec ->
-                sec.sessions.filter { it.dayOfWeek == day }.map { sec to it }
+                sec.sessions.filter { it.dayOfWeek == day && occursInWeek(it, parity) }
+                    .map { sec to it }
             }.sortedBy { it.second.startMinutes }
             for ((sec, sess) in todays) {
                 if (offset > 0 || sess.endMinutes > nowMinutes) {
@@ -563,6 +576,18 @@ object ScheduleEngine {
             }
         }
         return null
+    }
+
+    /**
+     * Display length of a live class card. University slots are 2h on the
+     * timetable, but only ~90 minutes are real teaching time (the rest is a
+     * break), so the home "ongoing" card counts down a 90-minute window.
+     */
+    const val LIVE_CARD_DISPLAY_MINUTES = 90
+
+    /** End of the live-card window: real end capped at start + 90 minutes. */
+    fun displayEndMinutes(session: ClassSession, capMinutes: Int = LIVE_CARD_DISPLAY_MINUTES): Int {
+        return minOf(session.endMinutes, session.startMinutes + capMinutes)
     }
 
     /**
