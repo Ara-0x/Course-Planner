@@ -67,7 +67,7 @@ that tells users to reinstall, then purge history.
 ## 3. Data safety rules
 
 - The app must **never** delete user data automatically at startup (the old
-  DataStore-marker wipe was removed in v2.4.1; see
+  DataStore-marker wipe was removed in v2.5.0; see
   `StartupDataPreservationTest`).
 - Wiping the database is only possible through the explicit "حذف همهٔ
   اطلاعات" action in Settings.

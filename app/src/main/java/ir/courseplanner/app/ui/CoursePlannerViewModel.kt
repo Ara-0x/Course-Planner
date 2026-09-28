@@ -120,7 +120,7 @@ class CoursePlannerViewModel @Inject constructor(
 
     val userPreferences: StateFlow<UserPreferences> = preferencesManager.preferences
 
-    // NOTE: there is deliberately NO startup "cleanup" here. Until v2.4.1 this
+    // NOTE: there is deliberately NO startup "cleanup" here. Until v2.5.0 this
     // class ran `repository.clearAllData()` whenever a DataStore marker
     // ("release clean done") was missing — i.e. one lost/never-written flag was
     // enough to erase an existing student's courses, groups, sessions,

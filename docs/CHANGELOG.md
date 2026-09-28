@@ -4,7 +4,7 @@ Notable changes to TermChin (Course Planner), newest first.
 Versions are written as `versionName (versionCode)` exactly as they appear in
 `app/build.gradle.kts` — the single source of truth also checked by CI.
 
-## [2.4.1] — 2026-09-28 integrity pass
+## [2.5.0] — 2026-09-28 integrity pass
 
 ### Fixed (critical data safety)
 
@@ -91,7 +91,7 @@ Versions are written as `versionName (versionCode)` exactly as they appear in
   (no `INTERNET` permission at all), Top-K + `maxLeaves` truncation instead of
   "all combinations", the 4-step HTML-file import workflow (no automatic portal
   login/scraping), MVVM + Repository (no "Clean Architecture" claim), removed
-  the deleted WebView entry, and documented the version history through 2.4.1.
+  the deleted WebView entry, and documented the version history through 2.5.0.
 
 ## [2.4.0] — 2026-09-28 audit pass
 

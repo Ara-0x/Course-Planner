@@ -28,7 +28,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * REGRESSION TEST for the startup data wipe that v2.4.1 removed.
+ * REGRESSION TEST for the startup data wipe that v2.5.0 removed.
  *
  * Old behaviour: `CoursePlannerViewModel.init` called `repository.clearAllData()`
  * whenever the DataStore marker `release_clean_courses_v1` was missing. The
