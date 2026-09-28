@@ -19,8 +19,8 @@ android {
     // NOTE: versionCode MUST be bumped on every user-facing APK release.
     // Android refuses to install an "update" with the same versionCode,
     // which is exactly why latest changes looked "missing" on the APK.
-    versionCode = 13
-    versionName = "2.3.0"
+    versionCode = 14
+    versionName = "2.4.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -35,19 +35,15 @@ android {
     buildConfigField("String", "BUILD_TIME", "\"${Instant.now()}\"")
   }
 
+  // Release signing: non-secret values (keystore path, alias) live in
+  // gradle.properties; passwords come ONLY from the environment
+  // (STORE_PASSWORD / KEY_PASSWORD) or -P flags — never from a committed file.
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
-    }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
+      storeFile = rootProject.file((findProperty("KEYSTORE_PATH") as String?) ?: "my-upload-key.jks")
+      keyAlias = (findProperty("KEY_ALIAS") as String?) ?: "upload"
+      storePassword = System.getenv("STORE_PASSWORD") ?: (findProperty("STORE_PASSWORD") as String?)
+      keyPassword = System.getenv("KEY_PASSWORD") ?: (findProperty("KEY_PASSWORD") as String?)
     }
   }
 
@@ -56,9 +52,19 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      // Sign only when the keystore file and both passwords are present;
+      // otherwise `assembleRelease` produces an unsigned APK (by design —
+      // a machine without credentials must never ship a signed artifact).
+      val releaseSigning = signingConfigs.getByName("release")
+      if (releaseSigning.storeFile?.exists() == true &&
+        releaseSigning.storePassword != null &&
+        releaseSigning.keyPassword != null
+      ) {
+        signingConfig = releaseSigning
+      }
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    // debug: AGP's default debug keystore (~/.android/debug.keystore,
+    // auto-created on first build) — a fresh clone builds with zero setup.
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -82,15 +88,11 @@ android {
 
 // NOTE (phase-0): Firebase / Gemini / network deps were removed because the app
 // is offline-first and none of the Kotlin sources referenced them.
-// Re-add from gradle/libs.versions.toml when you actually need them.
+// gradle/libs.versions.toml only lists dependencies this module really uses —
+// add the library there first when you actually need one.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
-  // implementation(libs.androidx.camera.camera2)
-  // implementation(libs.androidx.camera.core)
-  // implementation(libs.androidx.camera.lifecycle)
-  // implementation(libs.androidx.camera.view)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
@@ -103,10 +105,8 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  // implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   testImplementation(libs.androidx.compose.ui.test.junit4)

@@ -28,6 +28,23 @@ jobs:
           echo "HEAD_SHA=$(git rev-parse --short=7 HEAD)"
           echo "HEAD_SHA=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
 
+      # Single source of truth for the version: app/build.gradle.kts.
+      # Nothing below may hardcode versionCode/versionName again.
+      - name: Read version from app/build.gradle.kts
+        id: version
+        run: |
+          VC=$(sed -n 's/^[[:space:]]*versionCode = \([0-9]\+\).*/\1/p' app/build.gradle.kts | head -n 1)
+          VN=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
+          if [ -z "$VC" ] || [ -z "$VN" ]; then
+            echo "::error::Could not read versionCode/versionName from app/build.gradle.kts"
+            exit 1
+          fi
+          echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VN" >> "$GITHUB_ENV"
+          echo "version_code=$VC" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VN" >> "$GITHUB_OUTPUT"
+          echo "Building versionCode=$VC versionName=$VN"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -40,14 +57,27 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
 
-      - name: Restore Keystore
+      # The debug keystore IS this app's distribution key (released APKs are
+      # debug-signed), so its signature must stay identical across runs —
+      # otherwise users cannot install updates. It lives in the
+      # DEBUG_KEYSTORE_BASE64 repository secret and must never be committed.
+      - name: Restore debug keystore (stable APK signature)
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
+          mkdir -p "$HOME/.android"
+          KS="$HOME/.android/debug.keystore"
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_B64" | base64 -d > "$KS"
+            echo "Restored debug keystore from DEBUG_KEYSTORE_BASE64 secret."
+          elif [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > "$KS"
+            echo "Restored debug keystore from repository copy."
           else
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            keytool -genkey -v -keystore "$KS" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            echo "::warning::DEBUG_KEYSTORE_BASE64 secret missing — generated an ephemeral debug keystore. This APK will NOT install as an update over previously released builds. Add the keystore as the DEBUG_KEYSTORE_BASE64 repository secret."
           fi
-          ls -lh debug.keystore
+          ls -lh "$KS"
 
       - name: Ensure Gradle Wrapper
         run: |
@@ -55,6 +85,10 @@ jobs:
             gradle wrapper --gradle-version 9.3.1
           fi
           chmod +x ./gradlew
+
+      # Tests gate the APK: a red suite must never produce a release artifact.
+      - name: Unit tests (must pass before assembling)
+        run: ./gradlew testDebugUnitTest --stacktrace
 
       # IMPORTANT: `clean` + --no-configuration-cache guarantees the APK is
       # rebuilt from current sources. Without clean, stale dex/resources from
@@ -68,18 +102,45 @@ jobs:
           echo "APK=$APK"
           ls -lh app/build/outputs/apk/debug/
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 5
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='13'|versionName='2.3.0'" \
-            || (echo "::error::APK version mismatch: expected versionCode 13 / versionName 2.3.0. Stale build?"; exit 1)
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='$VERSION_CODE'|versionName='$VERSION_NAME'" \
+            || (echo "::error::APK version mismatch: expected versionCode $VERSION_CODE / versionName $VERSION_NAME. Stale build?"; exit 1)
+
+      # A release can no longer ship with an unchanged version: on v* tags the
+      # tag must equal versionName and versionCode must be strictly greater
+      # than the previous tag's versionCode (read from git history).
+      - name: Version regression gate (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$TAG_VERSION" != "$VERSION_NAME" ]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not match versionName '$VERSION_NAME' in app/build.gradle.kts"
+            exit 1
+          fi
+          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -Fxv "$GITHUB_REF_NAME" | head -n 1)
+          if [ -z "$PREV_TAG" ]; then
+            echo "First version tag — nothing to compare."
+            exit 0
+          fi
+          PREV_VC=$(git show "$PREV_TAG:app/build.gradle.kts" 2>/dev/null | sed -n 's/^[[:space:]]*versionCode = \([0-9]\+\).*/\1/p' | head -n 1)
+          if [ -z "$PREV_VC" ]; then
+            echo "::warning::Could not read versionCode from $PREV_TAG — skipping comparison."
+            exit 0
+          fi
+          if [ "$VERSION_CODE" -le "$PREV_VC" ]; then
+            echo "::error::versionCode $VERSION_CODE is not greater than $PREV_TAG's versionCode $PREV_VC. Bump versionCode in app/build.gradle.kts."
+            exit 1
+          fi
+          echo "versionCode $VERSION_CODE > $PREV_TAG ($PREV_VC) — OK"
 
       - name: Prepare APK Asset (unique name busts CDN/browser cache)
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v2.3.0-${HEAD_SHA}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/CoursePlanner-v2.3.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v${VERSION_NAME}-${HEAD_SHA}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v${VERSION_NAME}.apk"
           ls -la release-output/
           sha256sum release-output/*.apk
 
-      - name: Upload APK to Release v2.3.0
+      - name: Upload APK to Release
         # Guard: a push to `main` also runs this workflow, but only a v* tag may
         # publish a release. Without this, a branch push creates a bogus
         # "TermChin main" release (and a `main` tag) that steals "Latest".
@@ -92,7 +153,7 @@ jobs:
           draft: false
           prerelease: false
           body: |
-            ## 🎓 TermChin | ترم‌چین — نسخه ۲.۳.۰
+            ## 🎓 TermChin | ترم‌چین — نسخه ${{ env.VERSION_NAME }}
 
             ### ✨ جدید در این نسخه:
             - 🧭 **دکمه «مشاهده برنامه هفتگی»:** در کارت «امروز» دیگر وارد برنامه‌ساز نمی‌شود؛ به‌جای آن به تقویم هفتگی همان صفحه خانه اسکرول می‌کند و کادر برنامه یک هایلایت کوتاه می‌گیرد
@@ -101,15 +162,15 @@ jobs:
             - 🖼️ **انتخابگر تم مدرن:** کارت‌های دوستونی با نمونه‌رنگ گرادیانی و پیش‌نمایش روشن/تاریک هر تم در تنظیمات
             - ✅ **تست کنتراست:** تست خودکار WCAG برای خوانایی متن روی هر ۱۴ اسکیم (۷ تم × ۲ حالت)
 
-            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v2.3.0 (13)` و هش کامیت جدید را ببینید.
+            > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v${{ env.VERSION_NAME }} (${{ env.VERSION_CODE }})` و هش کامیت جدید را ببینید.
           files: |
-            release-output/CoursePlanner-v2.3.0.apk
-            release-output/CoursePlanner-v2.3.0-${{ env.HEAD_SHA }}.apk
+            release-output/CoursePlanner-v${{ env.VERSION_NAME }}.apk
+            release-output/CoursePlanner-v${{ env.VERSION_NAME }}-${{ env.HEAD_SHA }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TermChin-v2.3.0-APK-${{ env.HEAD_SHA }}
-          path: release-output/CoursePlanner-v2.3.0.apk
+          name: TermChin-v${{ env.VERSION_NAME }}-APK-${{ env.HEAD_SHA }}
+          path: release-output/CoursePlanner-v${{ env.VERSION_NAME }}.apk

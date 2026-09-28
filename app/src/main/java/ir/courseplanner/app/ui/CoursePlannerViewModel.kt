@@ -95,9 +95,15 @@ class CoursePlannerViewModel @Inject constructor(
     init {
         // One-time cleanup of pre-loaded sample courses for release builds.
         viewModelScope.launch {
-            if (!preferencesManager.isReleaseCleanDone()) {
-                repository.clearAllData()
-                preferencesManager.markReleaseCleanDone()
+            try {
+                if (!preferencesManager.isReleaseCleanDone()) {
+                    repository.clearAllData()
+                    preferencesManager.markReleaseCleanDone()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("CoursePlannerVM", "Release cleanup failed", e)
             }
         }
     }
@@ -166,6 +172,36 @@ class CoursePlannerViewModel @Inject constructor(
             }
         }
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Precomputed Courses-screen lookups: the Lazy list renders dozens of rows,
+    // so per-row full-list scans (filter/count over ALL sections or documents)
+    // are replaced by these O(1) maps derived once per data change.
+    val sectionsByCourse: StateFlow<Map<Long, List<SectionWithDetails>>> = allSections
+        .map { sections -> sections.groupBy { it.course.id } }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val documentCountByCourse: StateFlow<Map<Long, Int>> = documentsWithCourse
+        .map { docs -> docs.groupingBy { it.course.id }.eachCount() }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val departmentNames: StateFlow<List<String>> = coursesWithSections
+        .map { courses ->
+            listOf("همه") + courses.map { it.course.department }.filter { it.isNotBlank() }.distinct()
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf("همه"))
+
+    /** Portal-catalog courses not yet added to \"my courses\" (empty-state hint). */
+    val catalogOnlyCourseCount: StateFlow<Int> = coursesWithSections
+        .map { courses ->
+            courses.count { cws ->
+                !cws.course.isSelectedForGeneration && cws.sections.none { it.section.isEnrolled }
+            }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // Document Filters
     private val _selectedDocCourseId = MutableStateFlow<Long?>(null)
@@ -282,6 +318,38 @@ class CoursePlannerViewModel @Inject constructor(
     private val _isErrorMessage = MutableStateFlow(false)
     val isErrorMessage: StateFlow<Boolean> = _isErrorMessage.asStateFlow()
 
+    private fun showInfo(message: String) {
+        _userMessage.value = message
+        _isErrorMessage.value = false
+    }
+
+    private fun showError(message: String) {
+        _userMessage.value = message
+        _isErrorMessage.value = true
+    }
+
+    /**
+     * Runs a repository write inside a structured, user-visible error boundary:
+     * - thrown exceptions (disk full, IO, constraint races) become a visible
+     *   error snackbar instead of a silently swallowed coroutine failure;
+     * - CancellationException is never caught (structured concurrency stays intact).
+     */
+    private inline fun launchDbWrite(
+        crossinline onErrorMessage: () -> String = { "خطا در ذخیره اطلاعات؛ لطفاً دوباره تلاش کنید." },
+        crossinline block: suspend () -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("CoursePlannerVM", "DB write failed", e)
+                showError(onErrorMessage())
+            }
+        }
+    }
+
     fun navigateTo(destination: AppDestination) {
         _currentDestination.value = destination
     }
@@ -374,15 +442,15 @@ class CoursePlannerViewModel @Inject constructor(
     }
 
     fun setOptimizationPreference(preference: OptimizationPreference) {
+        if (_optimizationPreference.value == preference) return
         _optimizationPreference.value = preference
         val state = _generationState.value
-        if (state.isGenerated && state.rawCombinations.isNotEmpty()) {
-            val ranked = ScheduleEngine.rankSchedules(state.rawCombinations, preference)
-            _generationState.value = state.copy(
-                combinations = ranked,
-                currentIndex = 0
-            )
-        }
+        if (!state.isGenerated) return
+        // Only the previous Top-K (cut with the OLD weights) is retained, so a
+        // mere re-rank of those few survivors could not recover combinations the
+        // old cut already discarded. Re-run the search over the full candidate
+        // space so the new preference judges every valid schedule.
+        runScheduleGenerator()
     }
 
     fun toggleCourseSelectedForGeneration(courseId: Long, isSelected: Boolean) {
@@ -416,11 +484,11 @@ class CoursePlannerViewModel @Inject constructor(
 
             // Group sections with details for each selected course (names kept
             // so courses without any usable section can be reported by name).
-            val allSecs = allSections.value
+            val sectionsGrouped = allSections.value.groupBy { it.course.id }
             val generatorCourses = courses.map { cws ->
                 ir.courseplanner.app.engine.GeneratorCourse(
                     courseName = cws.course.name,
-                    sections = allSecs.filter { it.course.id == cws.course.id }
+                    sections = sectionsGrouped[cws.course.id].orEmpty()
                 )
             }
 
@@ -481,10 +549,9 @@ class CoursePlannerViewModel @Inject constructor(
     fun applyCurrentGeneratedSchedule() {
         val state = _generationState.value
         val scheduleToApply = state.combinations.getOrNull(state.currentIndex)?.schedule ?: return
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "اعمال برنامه ناموفق بود؛ لطفاً دوباره تلاش کنید." }) {
             repository.applySchedule(scheduleToApply)
-            _userMessage.value = "برنامه بهینه رتبه ${state.currentIndex + 1} با موفقیت به عنوان برنامه هفتگی اعمال شد."
-            _isErrorMessage.value = false
+            showInfo("برنامه بهینه رتبه ${state.currentIndex + 1} با موفقیت به عنوان برنامه هفتگی اعمال شد.")
             _currentDestination.value = AppDestination.HOME
         }
     }
@@ -530,8 +597,7 @@ class CoursePlannerViewModel @Inject constructor(
                 )
             }
             repository.addManualCourse(course, section, sessionEntities)
-            _userMessage.value = "درس «$name» با موفقیت اضافه شد."
-            _isErrorMessage.value = false
+            showInfo("درس «$name» با موفقیت اضافه شد.")
         }
     }
 
@@ -566,26 +632,23 @@ class CoursePlannerViewModel @Inject constructor(
                 )
             }
             repository.addSectionToCourse(courseId, section, sessionEntities)
-            _userMessage.value = "گروه $sectionCode با موفقیت به درس افزوده شد."
-            _isErrorMessage.value = false
+            showInfo("گروه $sectionCode با موفقیت به درس افزوده شد.")
         }
     }
 
     fun deleteCourse(courseId: Long, courseName: String) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "حذف درس ناموفق بود؛ لطفاً دوباره تلاش کنید." }) {
             repository.deleteCourse(courseId)
-            _userMessage.value = "درس «$courseName» حذف شد."
-            _isErrorMessage.value = false
+            showInfo("درس «$courseName» حذف شد.")
         }
     }
 
     fun updateCourse(courseId: Long, name: String, code: String, department: String, credits: Int) {
         if (name.isBlank()) {
-            _userMessage.value = "نام درس نمی‌تواند خالی باشد."
-            _isErrorMessage.value = true
+            showError("نام درس نمی‌تواند خالی باشد.")
             return
         }
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "ذخیره تغییرات درس ناموفق بود." }) {
             when (
                 repository.updateCourseDetails(
                     courseId = courseId,
@@ -596,26 +659,22 @@ class CoursePlannerViewModel @Inject constructor(
                 )
             ) {
                 CourseRepository.UpdateCourseResult.Success -> {
-                    _userMessage.value = "تغییرات درس «${name.trim()}» ذخیره شد."
-                    _isErrorMessage.value = false
+                    showInfo("تغییرات درس «${name.trim()}» ذخیره شد.")
                 }
                 CourseRepository.UpdateCourseResult.DuplicateCode -> {
-                    _userMessage.value = "کد «${code.trim()}» قبلاً برای درس دیگری ثبت شده است."
-                    _isErrorMessage.value = true
+                    showError("کد «${code.trim()}» قبلاً برای درس دیگری ثبت شده است.")
                 }
                 CourseRepository.UpdateCourseResult.NotFound -> {
-                    _userMessage.value = "درس موردنظر یافت نشد؛ ممکن است حذف شده باشد."
-                    _isErrorMessage.value = true
+                    showError("درس موردنظر یافت نشد؛ ممکن است حذف شده باشد.")
                 }
             }
         }
     }
 
     fun deleteSection(sectionId: Long, sectionCode: String) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "حذف گروه ناموفق بود؛ لطفاً دوباره تلاش کنید." }) {
             repository.deleteSection(sectionId)
-            _userMessage.value = "گروه $sectionCode حذف شد."
-            _isErrorMessage.value = false
+            showInfo("گروه $sectionCode حذف شد.")
         }
     }
 
@@ -634,11 +693,10 @@ class CoursePlannerViewModel @Inject constructor(
         sessions: List<ManualSessionInput>
     ) {
         if (sectionCode.isBlank()) {
-            _userMessage.value = "کد گروه نمی‌تواند خالی باشد."
-            _isErrorMessage.value = true
+            showError("کد گروه نمی‌تواند خالی باشد.")
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        launchDbWrite(onErrorMessage = { "ذخیره تغییرات گروه ناموفق بود." }) {
             val sessionEntities = sessions.map { input ->
                 ClassSession(
                     sectionId = sectionId,
@@ -661,16 +719,13 @@ class CoursePlannerViewModel @Inject constructor(
                 )
             ) {
                 CourseRepository.UpdateSectionResult.Success -> {
-                    _userMessage.value = "تغییرات گروه «${sectionCode.trim()}» ذخیره شد."
-                    _isErrorMessage.value = false
+                    showInfo("تغییرات گروه «${sectionCode.trim()}» ذخیره شد.")
                 }
                 CourseRepository.UpdateSectionResult.DuplicateCode -> {
-                    _userMessage.value = "کد گروه «${sectionCode.trim()}» قبلاً برای همین درس ثبت شده است."
-                    _isErrorMessage.value = true
+                    showError("کد گروه «${sectionCode.trim()}» قبلاً برای همین درس ثبت شده است.")
                 }
                 CourseRepository.UpdateSectionResult.NotFound -> {
-                    _userMessage.value = "گروه موردنظر یافت نشد؛ ممکن است حذف شده باشد."
-                    _isErrorMessage.value = true
+                    showError("گروه موردنظر یافت نشد؛ ممکن است حذف شده باشد.")
                 }
             }
         }
@@ -685,15 +740,13 @@ class CoursePlannerViewModel @Inject constructor(
 
         when (result) {
             is ImportResult.Success -> {
-                viewModelScope.launch {
+                launchDbWrite(onErrorMessage = { "درون‌ریزی در پایگاه داده ناموفق بود." }) {
                     repository.importItems(result.items, clearExisting = clearExisting)
-                    _userMessage.value = result.message
-                    _isErrorMessage.value = false
+                    showInfo(result.message)
                 }
             }
             is ImportResult.Failure -> {
-                _userMessage.value = result.errorMessage
-                _isErrorMessage.value = true
+                showError(result.errorMessage)
             }
         }
     }
@@ -710,14 +763,21 @@ class CoursePlannerViewModel @Inject constructor(
             }
             when (result) {
                 is ImportResult.Success -> {
-                    repository.importPortalItems(result.items, clearExisting = clearExisting)
-                    _userMessage.value = result.message +
-                        " از تب «دروس» با وارد کردن کد درس، به دروس خود اضافه کنید."
-                    _isErrorMessage.value = false
+                    try {
+                        repository.importPortalItems(result.items, clearExisting = clearExisting)
+                        showInfo(
+                            result.message +
+                                " از تب «دروس» با وارد کردن کد درس، به دروس خود اضافه کنید."
+                        )
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.e("CoursePlannerVM", "Portal import failed", e)
+                        showError("درون‌ریزی کاتالوگ پرتال ناموفق بود؛ لطفاً دوباره تلاش کنید.")
+                    }
                 }
                 is ImportResult.Failure -> {
-                    _userMessage.value = result.errorMessage
-                    _isErrorMessage.value = true
+                    showError(result.errorMessage)
                 }
             }
         }
@@ -728,40 +788,38 @@ class CoursePlannerViewModel @Inject constructor(
      * the generator and the default list. Called from the code-search card.
      */
     fun addCatalogCourseToMine(courseId: Long) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "افزودن درس به دروس من ناموفق بود." }) {
             val target = coursesWithSections.value.firstOrNull { it.course.id == courseId }
             repository.toggleCourseSelectedForGeneration(courseId, true)
-            _userMessage.value = if (target != null) {
-                "درس «${target.course.name}» به دروس من اضافه شد."
-            } else {
-                "درس به دروس من اضافه شد."
-            }
-            _isErrorMessage.value = false
+            showInfo(
+                if (target != null) {
+                    "درس «${target.course.name}» به دروس من اضافه شد."
+                } else {
+                    "درس به دروس من اضافه شد."
+                }
+            )
         }
     }
 
     fun loadSampleData(clearExisting: Boolean = true) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "بارگذاری نمونه اطلاعات ناموفق بود." }) {
             repository.importItems(CourseImporter.getSampleCatalog(), clearExisting = clearExisting)
-            _userMessage.value = "نمونه اطلاعات دروس دانشگاهی با موفقیت بارگذاری شد."
-            _isErrorMessage.value = false
+            showInfo("نمونه اطلاعات دروس دانشگاهی با موفقیت بارگذاری شد.")
         }
     }
 
     fun clearAllData() {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "پاکسازی اطلاعات ناموفق بود." }) {
             repository.clearAllData()
             _generationState.value = GenerationState()
-            _userMessage.value = "تمامی اطلاعات با موفقیت پاکسازی شدند."
-            _isErrorMessage.value = false
+            showInfo("تمامی اطلاعات با موفقیت پاکسازی شدند.")
         }
     }
 
     fun clearScheduleOnly() {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "خالی کردن برنامه هفتگی ناموفق بود." }) {
             repository.clearEnrollments()
-            _userMessage.value = "برنامه هفتگی خالی شد."
-            _isErrorMessage.value = false
+            showInfo("برنامه هفتگی خالی شد.")
         }
     }
 
@@ -798,7 +856,7 @@ class CoursePlannerViewModel @Inject constructor(
         fileSizeBytes: Long,
         isBookmarked: Boolean
     ) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "ذخیره جزوه / سند ناموفق بود." }) {
             val doc = CourseDocument(
                 courseId = courseId,
                 title = title.trim(),
@@ -810,24 +868,21 @@ class CoursePlannerViewModel @Inject constructor(
                 isBookmarked = isBookmarked
             )
             repository.insertDocument(doc)
-            _userMessage.value = "جزوه / سند با موفقیت ذخیره شد."
-            _isErrorMessage.value = false
+            showInfo("جزوه / سند با موفقیت ذخیره شد.")
         }
     }
 
     fun updateDocument(doc: CourseDocument) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "به‌روزرسانی جزوه ناموفق بود." }) {
             repository.updateDocument(doc)
-            _userMessage.value = "اطلاعات جزوه به‌روزرسانی شد."
-            _isErrorMessage.value = false
+            showInfo("اطلاعات جزوه به‌روزرسانی شد.")
         }
     }
 
     fun deleteDocument(id: Long) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "حذف جزوه / سند ناموفق بود." }) {
             repository.deleteDocument(id)
-            _userMessage.value = "جزوه / سند حذف گردید."
-            _isErrorMessage.value = false
+            showInfo("جزوه / سند حذف گردید.")
         }
     }
 

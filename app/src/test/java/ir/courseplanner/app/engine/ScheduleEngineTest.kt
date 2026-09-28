@@ -390,8 +390,11 @@ class ScheduleEngineTest {
         val evaluated = ScheduleEngine.evaluateSchedule(scheduleB, OptimizationPreference.MIN_GAPS)
         // gap 180 -> -39, one 8:00 class -> -1 => real score 60, never faked to 100.
         assertEquals(60, evaluated.score)
+        // The breakdown explains the score exactly: the BASE row (+100) plus the
+        // deductions sum to the final score (no clamp involved for this case).
         val deltaSum = evaluated.breakdown.sumOf { it.delta }
-        assertEquals(60, (100 + deltaSum).coerceIn(0, 100))
+        assertEquals(60, deltaSum)
+        assertEquals(1, evaluated.breakdown.count { it.delta > 0 })
         assertTrue(evaluated.breakdown.any { it.labelFa.contains("گپ") })
 
         val ranked = ScheduleEngine.rankSchedules(listOf(scheduleB), OptimizationPreference.MIN_GAPS)

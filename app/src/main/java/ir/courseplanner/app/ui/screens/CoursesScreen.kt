@@ -100,6 +100,9 @@ import ir.courseplanner.app.ui.FILTERABLE_DAYS
 import ir.courseplanner.app.ui.components.AddCourseDialog
 import ir.courseplanner.app.ui.components.AddSectionDialog
 import ir.courseplanner.app.ui.components.EditCourseDialog
+import ir.courseplanner.app.ui.screens.courses.CatalogQuickAddResults
+import ir.courseplanner.app.ui.screens.courses.CourseCard
+import ir.courseplanner.app.ui.screens.courses.FilterLabelRow
 
 @Composable
 fun CoursesScreen(
@@ -112,8 +115,13 @@ fun CoursesScreen(
     val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
     val filteredCourses by viewModel.filteredCourses.collectAsStateWithLifecycle()
     val allCoursesWithSections by viewModel.coursesWithSections.collectAsStateWithLifecycle()
-    val allSections by viewModel.allSections.collectAsStateWithLifecycle()
-    val allDocs by viewModel.documentsWithCourse.collectAsStateWithLifecycle()
+    val sectionsByCourse by viewModel.sectionsByCourse.collectAsStateWithLifecycle()
+    val documentCountByCourse by viewModel.documentCountByCourse.collectAsStateWithLifecycle()
+    val departmentNames by viewModel.departmentNames.collectAsStateWithLifecycle()
+    val catalogOnlyCourseCount by viewModel.catalogOnlyCourseCount.collectAsStateWithLifecycle()
+    val selectedCount = remember(allCoursesWithSections) {
+        allCoursesWithSections.count { it.course.isSelectedForGeneration }
+    }
     val enrolledSections by viewModel.enrolledSections.collectAsStateWithLifecycle()
 
     var showAddCourseDialog by remember { mutableStateOf(false) }
@@ -122,9 +130,7 @@ fun CoursesScreen(
     var courseToEdit by remember { mutableStateOf<Course?>(null) }
     var sectionToEdit by remember { mutableStateOf<SectionWithDetails?>(null) }
 
-    val departments = remember(allCoursesWithSections) {
-        listOf("همه") + allCoursesWithSections.map { it.course.department }.filter { it.isNotBlank() }.distinct()
-    }
+    val departments = departmentNames
     // Stable signature of the enrollment set: conflict checks are recomputed
     // only when enrollments actually change, not on every recomposition.
     val enrolledKey = remember(enrolledSections) {
@@ -559,9 +565,6 @@ fun CoursesScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                val selectedCount = remember(allCoursesWithSections) {
-                    allCoursesWithSections.count { it.course.isSelectedForGeneration }
-                }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -601,7 +604,7 @@ fun CoursesScreen(
                     ) {
                         CatalogQuickAddResults(
                             catalogMatches = catalogMatches,
-                            allSections = allSections,
+                            sectionsByCourse = sectionsByCourse,
                             onAdd = { viewModel.addCatalogCourseToMine(it) }
                         )
                         Text(
@@ -645,12 +648,6 @@ fun CoursesScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             // Guide the user when the portal catalog exists but
                             // "my courses" is still empty: search a code to add.
-                            val catalogOnlyCount = remember(allCoursesWithSections) {
-                                allCoursesWithSections.count { cws ->
-                                    !cws.course.isSelectedForGeneration &&
-                                        cws.sections.none { it.section.isEnrolled }
-                                }
-                            }
                             if (allCoursesWithSections.isEmpty()) {
                                 Text(
                                     text = "کاتالوگ دروس هنوز خالی است.",
@@ -674,11 +671,11 @@ fun CoursesScreen(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("افزودن درس دستی")
                                 }
-                            } else if (searchQuery.isBlank() && catalogOnlyCount > 0 &&
+                            } else if (searchQuery.isBlank() && catalogOnlyCourseCount > 0 &&
                                 statusFilter == CourseStatusFilter.MY_COURSES
                             ) {
                                 Text(
-                                    text = "کاتالوگ پرتال با $catalogOnlyCount درس آماده است.",
+                                    text = "کاتالوگ پرتال با $catalogOnlyCourseCount درس آماده است.",
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
@@ -735,19 +732,16 @@ fun CoursesScreen(
                     item(key = "catalog_quick_add") {
                         CatalogQuickAddResults(
                             catalogMatches = catalogMatches,
-                            allSections = allSections,
+                            sectionsByCourse = sectionsByCourse,
                             onAdd = { viewModel.addCatalogCourseToMine(it) }
                         )
                     }
                     items(filteredCourses, key = { it.course.id }) { cws ->
-                        val docCount = remember(allDocs, cws.course.id) {
-                            allDocs.count { it.course.id == cws.course.id }
-                        }
                         CourseCard(
                             courseWithSections = cws,
-                            allSections = allSections,
+                            sections = sectionsByCourse[cws.course.id].orEmpty(),
                             enrolledKey = enrolledKey,
-                            docCount = docCount,
+                            docCount = documentCountByCourse[cws.course.id] ?: 0,
                             onOpenDocuments = {
                                 viewModel.navigateToCourseDocuments(cws.course.id)
                             },
@@ -902,649 +896,5 @@ fun CoursesScreen(
                 }
             }
         )
-    }
-}
-
-@Composable
-private fun CourseCard(
-    courseWithSections: CourseWithSections,
-    allSections: List<SectionWithDetails>,
-    enrolledKey: String,
-    docCount: Int = 0,
-    onOpenDocuments: () -> Unit = {},
-    onToggleSelectedForGeneration: (Boolean) -> Unit,
-    onSelectSection: (SectionWithDetails, Boolean) -> Unit,
-    onAddSectionClick: () -> Unit,
-    onEditCourseClick: () -> Unit,
-    onDeleteCourseClick: () -> Unit,
-    onDeleteSectionClick: (SectionWithDetails) -> Unit,
-    onEditSectionClick: (SectionWithDetails) -> Unit,
-    checkConflict: (SectionWithDetails) -> ir.courseplanner.app.data.model.Conflict?
-) {
-    val course = courseWithSections.course
-    val sectionsWithDetails = remember(course.id, allSections) {
-        allSections.filter { it.course.id == course.id }
-    }
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(1.5.dp, RoundedCornerShape(18.dp))
-            .testTag("course_card_${course.code}"),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Course Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = course.name,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            // Long course names wrap to a second line instead of
-                            // being cut off with "..." after the first one.
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer)
-                                .padding(horizontal = 7.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "${course.credits} واحد",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                softWrap = false
-                            )
-                        }
-
-                        // Documents & Pamphlets shortcut chip
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                            modifier = Modifier.clickable { onOpenDocuments() }
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Description,
-                                    contentDescription = "اسناد درس",
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = if (docCount > 0) "$docCount جزوه" else "+ جزوه",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    softWrap = false
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(3.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "کد: ${course.code}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            softWrap = false
-                        )
-                        if (course.department.isNotBlank()) {
-                            Text(
-                                text = "•  دانشکده: ${course.department}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
-
-                // Top Actions: Checkbox for Schedule Generator + Delete Course
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(start = 8.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
-                        ) {
-                            Text(
-                                text = "برنامه‌ساز",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                softWrap = false
-                            )
-                            Checkbox(
-                                checked = course.isSelectedForGeneration,
-                                onCheckedChange = onToggleSelectedForGeneration,
-                                colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.size(40.dp)
-                            )
-                        }
-                    }
-
-                    IconButton(
-                        onClick = onEditCourseClick,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "ویرایش درس",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    IconButton(
-                        onClick = onDeleteCourseClick,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.DeleteOutline,
-                            contentDescription = "حذف درس",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Sections List Header & Add Group Button
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "گروه‌های ارائه شده (${sectionsWithDetails.size}):",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    softWrap = false
-                )
-
-                TextButton(
-                    onClick = onAddSectionClick,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                    modifier = Modifier.height(28.dp)
-                ) {
-                    Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "افزودن گروه دیگر",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        softWrap = false
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                sectionsWithDetails.forEach { sec ->
-                    val isEnrolled = sec.section.isEnrolled
-                    // Conflict math (pairwise session comparison + strings) is memoized:
-                    // it only re-runs when this section or the enrollment set changes,
-                    // not on every recomposition (e.g. while typing in search).
-                    val conflict = remember(sec, isEnrolled, enrolledKey) {
-                        if (!isEnrolled) checkConflict(sec) else null
-                    }
-
-                    SectionItem(
-                        section = sec,
-                        isEnrolled = isEnrolled,
-                        conflict = conflict,
-                        canDeleteSection = sectionsWithDetails.size > 1,
-                        onToggleEnroll = { onSelectSection(sec, !isEnrolled) },
-                        onDeleteSection = { onDeleteSectionClick(sec) },
-                        onEditSection = { onEditSectionClick(sec) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionItem(
-    section: SectionWithDetails,
-    isEnrolled: Boolean,
-    conflict: ir.courseplanner.app.data.model.Conflict?,
-    canDeleteSection: Boolean,
-    onToggleEnroll: () -> Unit,
-    onDeleteSection: () -> Unit,
-    onEditSection: () -> Unit
-) {
-    val borderColor by animateColorAsState(
-        targetValue = when {
-            isEnrolled -> MaterialTheme.colorScheme.primary
-            conflict != null -> MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
-            else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-        },
-        label = "borderColor"
-    )
-
-    val bgColor by animateColorAsState(
-        targetValue = when {
-            isEnrolled -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
-            conflict != null -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.12f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-        },
-        label = "bgColor"
-    )
-
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = bgColor,
-        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                if (isEnrolled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                else MaterialTheme.colorScheme.surface
-                            )
-                            .padding(horizontal = 7.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "گروه ${section.sectionCode}",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                            color = if (isEnrolled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            softWrap = false
-                        )
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = section.instructor.ifBlank { "استاد نامشخص" },
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (isEnrolled) {
-                        Button(
-                            onClick = onToggleEnroll,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.height(34.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "انتخاب شده",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                softWrap = false
-                            )
-                        }
-                    } else {
-                        OutlinedButton(
-                            onClick = onToggleEnroll,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.height(34.dp)
-                        ) {
-                            Text(
-                                text = "انتخاب گروه",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                softWrap = false
-                            )
-                        }
-                    }
-
-                    IconButton(
-                        onClick = onEditSection,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "ویرایش گروه",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                    if (canDeleteSection) {
-                        IconButton(
-                            onClick = onDeleteSection,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.DeleteOutline,
-                                contentDescription = "حذف گروه",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Class Sessions with individual week badges
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                section.sessions.forEach { sess ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Schedule,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "${ClassSession.getDayName(sess.dayOfWeek)} ${sess.startTime} تا ${sess.endTime}${if (sess.location.isNotBlank()) " (${sess.location})" else ""}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            softWrap = false,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-
-                        // Week recurrence badge
-                        if (sess.weekType != WeekType.EVERY_WEEK) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(
-                                        if (sess.weekType == WeekType.EVEN_WEEKS) MaterialTheme.colorScheme.primaryContainer
-                                        else MaterialTheme.colorScheme.secondaryContainer
-                                    )
-                                    .padding(horizontal = 6.dp, vertical = 1.dp)
-                            ) {
-                                Text(
-                                    text = sess.weekType.titleFa,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                                    color = if (sess.weekType == WeekType.EVEN_WEEKS) MaterialTheme.colorScheme.onPrimaryContainer
-                                    else MaterialTheme.colorScheme.onSecondaryContainer,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    softWrap = false
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Exam time
-            if (section.examDate.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Event,
-                        contentDescription = null,
-                        modifier = Modifier.size(13.dp),
-                        tint = MaterialTheme.colorScheme.outline
-                    )
-                    Text(
-                        text = "امتحان: ${section.examDate} ${section.examTimeRange}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        softWrap = false
-                    )
-                }
-            }
-
-            // Conflict Warning Pill if candidate conflicts with already enrolled courses
-            if (conflict != null) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "هشدار تداخل: ${conflict.descriptionFa}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        softWrap = false
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** Tiny section label used inside the collapsible filter panel. */
-@Composable
-private fun FilterLabelRow(label: String) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-}
-
-/**
- * Scrollable quick-add results block. Rendered as the first item of the course
- * list (and in the empty state) so every catalog match is reachable no matter
- * how many there are.
- */
-@Composable
-private fun CatalogQuickAddResults(
-    catalogMatches: List<CourseWithSections>,
-    allSections: List<SectionWithDetails>,
-    onAdd: (Long) -> Unit
-) {
-    AnimatedVisibility(
-        visible = catalogMatches.isNotEmpty(),
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "یافته‌ها در کاتالوگ پرتال (${catalogMatches.size} مورد) — برای افزودن لمس کنید:",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary
-            )
-            catalogMatches.forEach { cws ->
-                CatalogQuickAddCard(
-                    courseWithSections = cws,
-                    sections = allSections.filter { it.course.id == cws.course.id },
-                    onAdd = { onAdd(cws.course.id) }
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-        }
-    }
-}
-
-/**
- * Compact catalog result card for "add by course code".
- * Shows just enough detail (groups, instructor, first session, capacity)
- * for the user to pick the right course without opening the full catalog.
- */
-@Composable
-private fun CatalogQuickAddCard(
-    courseWithSections: CourseWithSections,
-    sections: List<SectionWithDetails>,
-    onAdd: () -> Unit
-) {
-    val course = courseWithSections.course
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("catalog_quick_add_${course.code}")
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = course.name,
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "کد: ${course.code}  •  ${course.credits} واحد  •  ${sections.size} گروه",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = onAdd,
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp,
-                        vertical = 4.dp
-                    ),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("افزودن", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            sections.take(2).forEach { sec ->
-                val first = sec.sessions.minByOrNull { it.dayOfWeek * 1440 + it.startMinutes }
-                val preview = if (first != null) {
-                    val extra = if (sec.sessions.size > 1) " +${sec.sessions.size - 1} جلسه دیگر" else ""
-                    "${ClassSession.getDayName(first.dayOfWeek)} ${first.startTime} تا ${first.endTime}" +
-                        (if (first.location.isNotBlank()) " (${first.location})" else "") + extra
-                } else {
-                    "بدون ساعت کلاسی ثبت‌شده"
-                }
-                Text(
-                    text = "گروه ${sec.sectionCode} • ${sec.instructor.ifBlank { "استاد نامشخص" }} • $preview • ظرفیت ${sec.section.capacity}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (sections.size > 2) {
-                Text(
-                    text = "و ${sections.size - 2} گروه دیگر…",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
     }
 }

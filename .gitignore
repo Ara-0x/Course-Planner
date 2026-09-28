@@ -54,12 +54,12 @@ captures/
 .idea/deploymentTargetDropDown.xml
 .idea/render.experimental.xml
 
-# Keystore files (never commit real keys; CI restores debug key from base64)
+# Keystore files (never commit real keys; CI restores the debug keystore from
+# the DEBUG_KEYSTORE_BASE64 repository secret — see README "امضای بیلد و CI")
 *.jks
 *.keystore
-my-upload-key.jks
+*.base64
 debug.keystore
-!debug.keystore.base64
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild

@@ -198,6 +198,20 @@ object ScheduleEngine {
     }
 
     /**
+     * Deterministic ranking order: real score first, then the tie-breakers a
+     * student would pick by hand (fewer idle minutes, fewer university days,
+     * fewer early-morning sessions) and finally a stable section-id tie-break,
+     * so the same search space always yields the same Top-K — independent of
+     * the order the DFS happened to visit combinations in.
+     */
+    val rankingComparator: Comparator<ScoredSchedule> =
+        compareByDescending<ScoredSchedule> { it.score }
+            .thenBy { it.totalGapMinutes }
+            .thenBy { it.activeDaysCount }
+            .thenBy { it.earlyMorningClassCount }
+            .thenBy { scored -> scored.schedule.sumOf { sec -> sec.section.id } }
+
+    /**
      * Searches conflict-free schedules with branch & bound, keeping the best
      * top-K instead of the first-K in DFS order.
      *
@@ -228,12 +242,13 @@ object ScheduleEngine {
         val current = mutableListOf<SectionWithDetails>()
 
         fun insertCandidate(scored: ScoredSchedule) {
+            if (topK <= 0) return
             if (top.size < topK) {
                 top.add(scored)
-                top.sortByDescending { it.score }
-            } else if (topK > 0 && scored.score > top.last().score) {
+                top.sortWith(rankingComparator)
+            } else if (rankingComparator.compare(scored, top.last()) < 0) {
                 top[top.lastIndex] = scored
-                top.sortByDescending { it.score }
+                top.sortWith(rankingComparator)
             }
         }
 
@@ -268,7 +283,7 @@ object ScheduleEngine {
 
         backtrack(0)
         return ScheduleSearchResult(
-            ranked = markBest(top.toList()),
+            ranked = markBest(top.sortedWith(rankingComparator)),
             totalValid = totalValid,
             truncated = truncated,
             skippedCourses = skipped
@@ -503,7 +518,7 @@ object ScheduleEngine {
         preference: OptimizationPreference = OptimizationPreference.BALANCED
     ): List<ScoredSchedule> {
         val scoredList = schedules.map { evaluateSchedule(it, preference) }
-        return markBest(scoredList.sortedByDescending { it.score })
+        return markBest(scoredList.sortedWith(rankingComparator))
     }
 
     /**
