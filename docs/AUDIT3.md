@@ -21,7 +21,8 @@ carried their commented-out lines.
 Kept test infra (espresso/runner/ui-test-junit4, Robolectric/Roborazzi) and
 debug `ui-tooling`/`ui-test-manifest` (Compose unit tests need them).
 The legacy web prototype (`src/`, `package.json`, `vite.config.ts`) is not
-part of the Android build — left untouched, noted as a cleanup candidate.
+part of the Android build — left untouched, noted as a cleanup candidate (the prototype was deleted in
+the v2.4.0 cleanup pass that followed this audit).
 
 **Verified by:** every `libs.*` reference in the build files resolves against
 the pruned catalog (33 libraries / 5 plugins; was ~48/7); configuration,

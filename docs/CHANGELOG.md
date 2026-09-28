@@ -44,8 +44,19 @@ Versions are written as `versionName (versionCode)` exactly as they appear in
   libraries/plugins (camera, location, Retrofit/Moshi/OkHttp, Coil,
   accompanist, navigation-compose, Firebase, credentials, secrets &
   google-services plugins) and `app/build.gradle.kts` dropped the
-  commented-out stubs. The legacy web prototype (`src/`, `package.json`) is
-  untouched and out of the Android build.
+  commented-out stubs. The legacy web prototype was out of the Android build
+  and is deleted in the "Removed" section below.
+
+### Removed
+
+- **Legacy web prototype deleted.** The pre-Android React/Vite prototype
+  (`src/App.tsx`, `src/main.tsx`, `src/index.css`,
+  `src/utils/{defaultData,parser}.ts`, `index.html`, `package.json`,
+  `tsconfig.json`, `vite.config.ts`, `metadata.json` — ~130 KB) never
+  participated in the Gradle build (`settings.gradle.kts` includes only
+  `:app`, and no workflow, build script or source file referenced it), so it
+  was pure dead weight that made every clone look like a mixed JS/Android
+  project. It stays available in git history if it is ever needed again.
 
 ### Security / build
 

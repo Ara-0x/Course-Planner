@@ -116,16 +116,8 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Web and preview build
-node_modules/
-dist/
-bun.lock
-
 # Local CI release staging (APKs are published to GitHub Releases, not git)
 release-output/
 
 # Build folders (except what we want to commit)
 *_public_key.*
-
-# Keep the sample data file for testing purposes in git if needed
-# metadata.json
