@@ -50,14 +50,22 @@ Versions are written as `versionName (versionCode)` exactly as they appear in
 ### Security / build
 
 - **Keystore hygiene.** `debug.keystore.base64` untracked; `*.jks`,
-  `*.keystore`, `*.base64` gitignored. Debug builds use AGP's standard
-  auto-generated keystore (fresh clones build with zero setup). Release
-  signing reads only non-secret values from `gradle.properties`
-  (`KEYSTORE_PATH`, `KEY_ALIAS`) and passwords **only** from the environment
-  (`STORE_PASSWORD`/`KEY_PASSWORD`) or `-P` — no defaults, no committed file;
-  without them the release APK is unsigned by design. CI restores the
-  distribution debug keystore from the `DEBUG_KEYSTORE_BASE64` repository
-  secret so released APKs keep a stable signature.
+  `*.keystore`, `*.base64` and `.ci-secrets/` gitignored. Local debug builds
+  use AGP's standard auto-generated keystore (fresh clones build with zero
+  setup). Release signing reads only non-secret values from
+  `gradle.properties` (`KEYSTORE_PATH`, `KEY_ALIAS`) and passwords **only**
+  from the environment (`STORE_PASSWORD`/`KEY_PASSWORD`) or `-P` — no
+  defaults, no committed file; without them the release APK is unsigned by
+  design. Because the released APKs are debug-signed, the debug key *is* the
+  distribution key: CI restores it from the `DEBUG_KEYSTORE_BASE64`
+  repository secret into `.ci-secrets/debug.keystore` and hands it to the
+  build explicitly through `CI_KEYSTORE_PATH` (relying on AGP's implicit
+  `~/.android/debug.keystore` silently produced a throwaway key and an APK
+  that could not update installed builds).
+- **Signature gate.** `build-apk.yml` verifies the built APK's signer
+  certificate against the public SHA-256 fingerprint of the historical
+  release key and fails the run on any mismatch, so a signature-breaking
+  release can never be published again.
 - **CI gates.** `build-apk.yml` now (1) runs `testDebugUnitTest` before
   assembling, (2) derives `versionCode`/`versionName` from
   `app/build.gradle.kts` instead of hardcoding them, (3) on `v*` tags fails

@@ -45,9 +45,32 @@ android {
       storePassword = System.getenv("STORE_PASSWORD") ?: (findProperty("STORE_PASSWORD") as String?)
       keyPassword = System.getenv("KEY_PASSWORD") ?: (findProperty("KEY_PASSWORD") as String?)
     }
+    // Released APKs are debug-signed, so the debug key IS the distribution key:
+    // every release must carry the same certificate or Android refuses the
+    // update over an installed build. Relying on AGP's implicit
+    // ~/.android/debug.keystore proved unreliable in CI (the runner silently
+    // generated a throwaway key), so CI restores the historical key and passes
+    // its path through CI_KEYSTORE_PATH. Local builds leave it unset and keep
+    // AGP's zero-setup default debug key.
+    val ciDebugKeystore = (System.getenv("CI_KEYSTORE_PATH") ?: "").trim()
+    if (ciDebugKeystore.isNotEmpty() && rootProject.file(ciDebugKeystore).exists()) {
+      create("ciDebug") {
+        storeFile = rootProject.file(ciDebugKeystore)
+        storePassword = System.getenv("CI_KEYSTORE_PASSWORD") ?: "android"
+        keyAlias = System.getenv("CI_KEY_ALIAS") ?: "androiddebugkey"
+        keyPassword = System.getenv("CI_KEY_PASSWORD") ?: "android"
+      }
+    }
   }
 
   buildTypes {
+    debug {
+      // Pin the debug signer to the CI-restored keystore when one was provided.
+      val ciDebugSigning = signingConfigs.findByName("ciDebug")
+      if (ciDebugSigning != null) {
+        signingConfig = ciDebugSigning
+      }
+    }
     release {
       isCrunchPngs = false
       isMinifyEnabled = false

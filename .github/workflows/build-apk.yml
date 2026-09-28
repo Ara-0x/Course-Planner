@@ -65,19 +65,21 @@ jobs:
         env:
           DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
-          mkdir -p "$HOME/.android"
-          KS="$HOME/.android/debug.keystore"
+          KS="$GITHUB_WORKSPACE/.ci-secrets/debug.keystore"
+          mkdir -p "$(dirname "$KS")"
           if [ -n "$DEBUG_KEYSTORE_B64" ]; then
             printf '%s' "$DEBUG_KEYSTORE_B64" | base64 -d > "$KS"
             echo "Restored debug keystore from DEBUG_KEYSTORE_BASE64 secret."
-          elif [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > "$KS"
-            echo "Restored debug keystore from repository copy."
+            echo "KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
           else
-            keytool -genkey -v -keystore "$KS" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            echo "::warning::DEBUG_KEYSTORE_BASE64 secret missing — generated an ephemeral debug keystore. This APK will NOT install as an update over previously released builds. Add the keystore as the DEBUG_KEYSTORE_BASE64 repository secret."
+            echo "::warning::DEBUG_KEYSTORE_BASE64 secret is missing — the build falls back to AGP's auto-generated debug key, whose APK cannot install as an update over released builds."
           fi
-          ls -lh "$KS"
+          if [ -f "$KS" ]; then
+            ls -lh "$KS"
+            # A certificate fingerprint is public data; print it so the log
+            # proves which key the build was handed.
+            keytool -list -v -keystore "$KS" -storepass android -alias androiddebugkey 2>/dev/null | grep -E 'Owner:|SHA256:' || true
+          fi
 
       - name: Ensure Gradle Wrapper
         run: |
@@ -94,6 +96,8 @@ jobs:
       # rebuilt from current sources. Without clean, stale dex/resources from
       # the Gradle cache can make it look like "changes didn't land on APK".
       - name: Build Debug APK (clean rebuild from current sources)
+        env:
+          CI_KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
         run: ./gradlew clean assembleDebug --no-configuration-cache --stacktrace
 
       - name: Verify APK carries new version (fail if stale)
@@ -104,6 +108,27 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 5
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='$VERSION_CODE'|versionName='$VERSION_NAME'" \
             || (echo "::error::APK version mismatch: expected versionCode $VERSION_CODE / versionName $VERSION_NAME. Stale build?"; exit 1)
+
+      # Released APKs must carry the SAME certificate as every previous release,
+      # otherwise Android rejects the update (INSTALL_FAILED_UPDATE_INCOMPATIBLE)
+      # and users have to uninstall first. The constant below is the public
+      # SHA-256 fingerprint of the historical debug key that signs v2.0 … v2.3.
+      - name: Signature gate (APK must match the historical release key)
+        env:
+          EXPECTED_SIGNER_SHA256: fcced2ea0574ba6c7b9536c44846c2b697e1f841507af9e4ed00ed910bbe10ff
+        run: |
+          APK=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          FP=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr 'A-F' 'a-f')
+          echo "APK signer SHA-256 : $FP"
+          echo "expected           : $EXPECTED_SIGNER_SHA256"
+          if [ "$FP" = "$EXPECTED_SIGNER_SHA256" ]; then
+            echo "Signature matches the historical release key — the APK will install as an update."
+          elif [ -z "$KEYSTORE_PATH" ]; then
+            echo "::warning::DEBUG_KEYSTORE_BASE64 was unavailable, so the APK carries a throwaway debug key. Skipping comparison (no release should be published from such a build)."
+          else
+            echo "::error::APK is signed with an unexpected key. Installed builds would not be updatable — check the DEBUG_KEYSTORE_BASE64 secret and CI_KEYSTORE_PATH plumbing."
+            exit 1
+          fi
 
       # A release can no longer ship with an unchanged version: on v* tags the
       # tag must equal versionName and versionCode must be strictly greater
