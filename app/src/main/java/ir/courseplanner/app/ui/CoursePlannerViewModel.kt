@@ -56,6 +56,22 @@ data class ManualSessionInput(
     val weekType: WeekType = WeekType.EVERY_WEEK
 )
 
+/**
+ * Dialog/form input → persistable session. [sectionId] is a placeholder (0) for
+ * new groups: the repository assigns the real id inside its transaction.
+ *
+ * Single definition shared by the manual dialogs and the ViewModel, so the
+ * sessions that get validated are byte-for-byte the sessions that get stored.
+ */
+fun ManualSessionInput.toClassSession(sectionId: Long = 0L): ClassSession = ClassSession(
+    sectionId = sectionId,
+    dayOfWeek = dayOfWeek,
+    startTime = startTime.trim(),
+    endTime = endTime.trim(),
+    location = location.trim(),
+    weekType = weekType
+)
+
 data class GenerationState(
     val isGenerated: Boolean = false,
     val combinations: List<ScoredSchedule> = emptyList(),
@@ -66,7 +82,19 @@ data class GenerationState(
     val skippedCourses: List<String> = emptyList(),
     /** True when the search hit its safety cap (best-so-far is still shown). */
     val truncated: Boolean = false
-)
+) {
+    /**
+     * True only when the generated result covers EVERY course selected for the
+     * generator. An incomplete result stays visible (with the names in
+     * [skippedCourses]) but must not be applied over the current program, which
+     * is why the Apply button is disabled and `applyCurrentGeneratedSchedule()`
+     * refuses the operation.
+     */
+    val isComplete: Boolean get() = skippedCourses.isEmpty()
+
+    /** The current candidate may replace the user's program. */
+    val canApplyCurrent: Boolean get() = isGenerated && combinations.isNotEmpty() && isComplete
+}
 
 enum class CourseStatusFilter(val titleFa: String) {
     // NOTE: there is intentionally no separate "generator target" tab:
@@ -92,21 +120,14 @@ class CoursePlannerViewModel @Inject constructor(
 
     val userPreferences: StateFlow<UserPreferences> = preferencesManager.preferences
 
-    init {
-        // One-time cleanup of pre-loaded sample courses for release builds.
-        viewModelScope.launch {
-            try {
-                if (!preferencesManager.isReleaseCleanDone()) {
-                    repository.clearAllData()
-                    preferencesManager.markReleaseCleanDone()
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.e("CoursePlannerVM", "Release cleanup failed", e)
-            }
-        }
-    }
+    // NOTE: there is deliberately NO startup "cleanup" here. Until v2.4.1 this
+    // class ran `repository.clearAllData()` whenever a DataStore marker
+    // ("release clean done") was missing — i.e. one lost/never-written flag was
+    // enough to erase an existing student's courses, groups, sessions,
+    // enrollments and documents on the next launch. The marker existed only to
+    // drop sample/demo courses that an early development build shipped; the
+    // sample catalog is now loaded explicitly by the user ("بارگذاری نمونه" in
+    // Settings), so no automatic deletion may ever run on startup again.
 
     private val _currentDestination = MutableStateFlow(AppDestination.HOME)
     val currentDestination: StateFlow<AppDestination> = _currentDestination.asStateFlow()
@@ -453,14 +474,24 @@ class CoursePlannerViewModel @Inject constructor(
         runScheduleGenerator()
     }
 
+    /**
+     * Toggles a course's "generator target" flag. Routed through [launchDbWrite]
+     * because a failed write leaves the checkbox visually changed while the row
+     * never changed — exactly the silent lie the shared error boundary prevents.
+     */
     fun toggleCourseSelectedForGeneration(courseId: Long, isSelected: Boolean) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "تغییر وضعیت انتخاب درس برای برنامه‌ساز ناموفق بود." }) {
             repository.toggleCourseSelectedForGeneration(courseId, isSelected)
         }
     }
 
     fun toggleSectionEnrolled(section: SectionWithDetails, isEnrolled: Boolean) {
-        viewModelScope.launch {
+        launchDbWrite(
+            onErrorMessage = {
+                if (isEnrolled) "ثبت‌نام در گروه «${section.section.sectionCode}» ناموفق بود."
+                else "حذف گروه «${section.section.sectionCode}» از برنامه هفتگی ناموفق بود."
+            }
+        ) {
             repository.setSectionEnrolled(section, isEnrolled)
         }
     }
@@ -546,16 +577,54 @@ class CoursePlannerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Applies the currently shown candidate to the weekly program.
+     *
+     * Guard: an INCOMPLETE result (some selected course had no usable group) is
+     * never applied — that would silently drop those courses from the student's
+     * program. The repository re-checks the same invariant before writing.
+     */
     fun applyCurrentGeneratedSchedule() {
         val state = _generationState.value
-        val scheduleToApply = state.combinations.getOrNull(state.currentIndex)?.schedule ?: return
+        val scheduleToApply = state.combinations.getOrNull(state.currentIndex)?.schedule
+        if (scheduleToApply.isNullOrEmpty()) return
+        if (!state.isComplete) {
+            showError(
+                "این برنامه کامل نیست و اعمال نمی‌شود؛ برای این دروس گروه قابل‌استفاده‌ای وجود ندارد: " +
+                    state.skippedCourses.joinToString("، ") +
+                    ". ابتدا برای آن‌ها گروه تعریف کنید (یا آن‌ها را از برنامه‌ساز خارج کنید)."
+            )
+            return
+        }
         launchDbWrite(onErrorMessage = { "اعمال برنامه ناموفق بود؛ لطفاً دوباره تلاش کنید." }) {
-            repository.applySchedule(scheduleToApply)
-            showInfo("برنامه بهینه رتبه ${state.currentIndex + 1} با موفقیت به عنوان برنامه هفتگی اعمال شد.")
-            _currentDestination.value = AppDestination.HOME
+            when (val applied = repository.applySchedule(scheduleToApply)) {
+                CourseRepository.ApplyScheduleResult.Success -> {
+                    showInfo("برنامه بهینه رتبه ${state.currentIndex + 1} با موفقیت به عنوان برنامه هفتگی اعمال شد.")
+                    _currentDestination.value = AppDestination.HOME
+                }
+                is CourseRepository.ApplyScheduleResult.Incomplete -> {
+                    // Defensive: the data changed between generation and apply.
+                    showError(
+                        "اعمال نشد؛ این برنامه دروس زیر را پوشش نمی‌دهد: " +
+                            applied.missingCourseNames.joinToString("، ") +
+                            ". برنامه‌ساز را دوباره اجرا کنید."
+                    )
+                }
+                CourseRepository.ApplyScheduleResult.Empty -> {
+                    showError("برنامه‌ای برای اعمال وجود ندارد.")
+                }
+            }
         }
     }
 
+    /**
+     * Creates a course manually (name, code, first group, sessions).
+     *
+     * The code is REQUIRED: a course code is domain data, so it is never
+     * synthesized (`CRS-1234` fallback was removed — it produced courses the
+     * student could never match against the portal). The repository enforces
+     * uniqueness of the normalized code and rejects self-conflicting sessions.
+     */
     fun addManualCourse(
         name: String,
         code: String,
@@ -568,9 +637,21 @@ class CoursePlannerViewModel @Inject constructor(
         examEndTime: String,
         sessions: List<ManualSessionInput>
     ) {
-        viewModelScope.launch {
+        if (name.isBlank()) {
+            showError("نام درس نمی‌تواند خالی باشد.")
+            return
+        }
+        if (code.isBlank()) {
+            showError("کد درس الزامی است؛ لطفاً کد واقعی درس را وارد کنید.")
+            return
+        }
+        if (sectionCode.isBlank()) {
+            showError("کد گروه نمی‌تواند خالی باشد.")
+            return
+        }
+        launchDbWrite(onErrorMessage = { "افزودن درس ناموفق بود؛ لطفاً دوباره تلاش کنید." }) {
             val course = Course(
-                code = code.trim().ifBlank { "CRS-${System.currentTimeMillis() % 10000}" },
+                code = code.trim(),
                 name = name.trim(),
                 department = department.trim(),
                 credits = credits.coerceIn(1, 20),
@@ -578,7 +659,7 @@ class CoursePlannerViewModel @Inject constructor(
             )
             val section = CourseSection(
                 courseId = 0,
-                sectionCode = sectionCode.trim().ifBlank { "01" },
+                sectionCode = sectionCode.trim(),
                 instructor = instructor.trim(),
                 capacity = 30,
                 examDate = examDate.trim(),
@@ -586,18 +667,24 @@ class CoursePlannerViewModel @Inject constructor(
                 examEndTime = examEndTime.trim(),
                 isEnrolled = false
             )
-            val sessionEntities = sessions.map { input ->
-                ClassSession(
-                    sectionId = 0,
-                    dayOfWeek = input.dayOfWeek,
-                    startTime = input.startTime.trim(),
-                    endTime = input.endTime.trim(),
-                    location = input.location.trim(),
-                    weekType = input.weekType
-                )
+            val sessionEntities = sessions.toSessionEntities(sectionId = 0)
+            // `Success` already reported the new id through the info message; the
+            // remaining branches turn every refusal into a visible reason.
+            when (repository.addManualCourse(course, section, sessionEntities)) {
+                is CourseRepository.AddCourseResult.Success -> {
+                    showInfo("درس «${name.trim()}» با موفقیت اضافه شد.")
+                }
+                CourseRepository.AddCourseResult.DuplicateCode ->
+                    showError("کد «${code.trim()}» قبلاً برای درس دیگری ثبت شده است.")
+                CourseRepository.AddCourseResult.BlankCode ->
+                    showError("کد درس نمی‌تواند خالی باشد.")
+                CourseRepository.AddCourseResult.BlankSectionCode ->
+                    showError("کد گروه نمی‌تواند خالی باشد.")
+                CourseRepository.AddCourseResult.ConflictingSessions ->
+                    showError("جلسات این گروه با هم تداخل دارند؛ بازه‌های ساعتی را اصلاح کنید.")
+                CourseRepository.AddCourseResult.InvalidSessions ->
+                    showError("ساعت یکی از جلسات نامعتبر است؛ فرمت درست 08:00 و شروع قبل از پایان باشد.")
             }
-            repository.addManualCourse(course, section, sessionEntities)
-            showInfo("درس «$name» با موفقیت اضافه شد.")
         }
     }
 
@@ -610,10 +697,14 @@ class CoursePlannerViewModel @Inject constructor(
         examEndTime: String,
         sessions: List<ManualSessionInput>
     ) {
-        viewModelScope.launch {
+        if (sectionCode.isBlank()) {
+            showError("کد گروه نمی‌تواند خالی باشد.")
+            return
+        }
+        launchDbWrite(onErrorMessage = { "افزودن گروه ناموفق بود؛ لطفاً دوباره تلاش کنید." }) {
             val section = CourseSection(
                 courseId = courseId,
-                sectionCode = sectionCode.trim().ifBlank { "01" },
+                sectionCode = sectionCode.trim(),
                 instructor = instructor.trim(),
                 capacity = 30,
                 examDate = examDate.trim(),
@@ -621,20 +712,29 @@ class CoursePlannerViewModel @Inject constructor(
                 examEndTime = examEndTime.trim(),
                 isEnrolled = false
             )
-            val sessionEntities = sessions.map { input ->
-                ClassSession(
-                    sectionId = 0,
-                    dayOfWeek = input.dayOfWeek,
-                    startTime = input.startTime.trim(),
-                    endTime = input.endTime.trim(),
-                    location = input.location.trim(),
-                    weekType = input.weekType
-                )
+            when (
+                repository.addSectionToCourse(courseId, section, sessions.toSessionEntities(sectionId = 0))
+            ) {
+                is CourseRepository.AddSectionResult.Success -> {
+                    showInfo("گروه ${sectionCode.trim()} با موفقیت به درس افزوده شد.")
+                }
+                CourseRepository.AddSectionResult.DuplicateCode ->
+                    showError("کد گروه «${sectionCode.trim()}» قبلاً برای همین درس ثبت شده است.")
+                CourseRepository.AddSectionResult.BlankCode ->
+                    showError("کد گروه نمی‌تواند خالی باشد.")
+                CourseRepository.AddSectionResult.CourseNotFound ->
+                    showError("درس موردنظر یافت نشد؛ ممکن است حذف شده باشد.")
+                CourseRepository.AddSectionResult.ConflictingSessions ->
+                    showError("جلسات این گروه با هم تداخل دارند؛ بازه‌های ساعتی را اصلاح کنید.")
+                CourseRepository.AddSectionResult.InvalidSessions ->
+                    showError("ساعت یکی از جلسات نامعتبر است؛ فرمت درست 08:00 و شروع قبل از پایان باشد.")
             }
-            repository.addSectionToCourse(courseId, section, sessionEntities)
-            showInfo("گروه $sectionCode با موفقیت به درس افزوده شد.")
         }
     }
+
+    /** Manual dialog input → persistable sessions (sectionId is filled by the repository). */
+    private fun List<ManualSessionInput>.toSessionEntities(sectionId: Long): List<ClassSession> =
+        map { input -> input.toClassSession(sectionId) }
 
     fun deleteCourse(courseId: Long, courseName: String) {
         launchDbWrite(onErrorMessage = { "حذف درس ناموفق بود؛ لطفاً دوباره تلاش کنید." }) {
@@ -646,6 +746,10 @@ class CoursePlannerViewModel @Inject constructor(
     fun updateCourse(courseId: Long, name: String, code: String, department: String, credits: Int) {
         if (name.isBlank()) {
             showError("نام درس نمی‌تواند خالی باشد.")
+            return
+        }
+        if (code.isBlank()) {
+            showError("کد درس نمی‌تواند خالی باشد.")
             return
         }
         launchDbWrite(onErrorMessage = { "ذخیره تغییرات درس ناموفق بود." }) {
@@ -663,6 +767,9 @@ class CoursePlannerViewModel @Inject constructor(
                 }
                 CourseRepository.UpdateCourseResult.DuplicateCode -> {
                     showError("کد «${code.trim()}» قبلاً برای درس دیگری ثبت شده است.")
+                }
+                CourseRepository.UpdateCourseResult.BlankCode -> {
+                    showError("کد درس نمی‌تواند خالی باشد.")
                 }
                 CourseRepository.UpdateCourseResult.NotFound -> {
                     showError("درس موردنظر یافت نشد؛ ممکن است حذف شده باشد.")
@@ -724,6 +831,15 @@ class CoursePlannerViewModel @Inject constructor(
                 CourseRepository.UpdateSectionResult.DuplicateCode -> {
                     showError("کد گروه «${sectionCode.trim()}» قبلاً برای همین درس ثبت شده است.")
                 }
+                CourseRepository.UpdateSectionResult.BlankCode -> {
+                    showError("کد گروه نمی‌تواند خالی باشد.")
+                }
+                CourseRepository.UpdateSectionResult.ConflictingSessions -> {
+                    showError("جلسات این گروه با هم تداخل دارند؛ بازه‌های ساعتی را اصلاح کنید.")
+                }
+                CourseRepository.UpdateSectionResult.InvalidSessions -> {
+                    showError("ساعت یکی از جلسات نامعتبر است؛ فرمت درست 08:00 و شروع قبل از پایان باشد.")
+                }
                 CourseRepository.UpdateSectionResult.NotFound -> {
                     showError("گروه موردنظر یافت نشد؛ ممکن است حذف شده باشد.")
                 }
@@ -752,11 +868,41 @@ class CoursePlannerViewModel @Inject constructor(
     }
 
     /**
+     * Import stage 1 — the picked file could not be READ (deleted file, revoked
+     * permission, unsupported encoding). This must never be turned into an empty
+     * HTML string: the parser would then report "the HTML file is empty" and the
+     * real I/O failure would be invisible.
+     */
+    fun reportImportFileReadFailed(detail: String, displayName: String? = null) {
+        val name = displayName?.takeIf { it.isNotBlank() } ?: "انتخاب‌شده"
+        android.util.Log.e("CoursePlannerVM", "Import file read failed: $name -> $detail")
+        showError("خواندن فایل «$name» ناموفق بود؛ فایل حذف/جابه‌جا شده یا دسترسی به آن ممکن نیست.")
+    }
+
+    /**
+     * Import stage 2 — the file WAS read but contains nothing. Told apart from a
+     * read failure so the user knows what to redo (save the page as HTML again).
+     */
+    fun reportImportFileEmpty(displayName: String? = null) {
+        val name = displayName?.takeIf { it.isNotBlank() } ?: "انتخاب‌شده"
+        showError("فایل «$name» خالی است؛ لطفاً صفحهٔ «دروس ارائه‌شده» را دوباره به‌صورت HTML ذخیره کنید.")
+    }
+
+    /**
      * Imports a saved university-portal HTML file (Pooya/Golestan/…) into the
      * hidden course catalog. Same-code courses are replaced, never duplicated.
      * Parsing runs off the main thread; the file can hold 200+ rows.
+     *
+     * Stages 3 and 4 (read OK → parser outcome) are reported by the parser:
+     * "no courses found" and "import succeeded" stay distinguishable.
      */
     fun importPortalHtml(html: String, clearExisting: Boolean) {
+        if (html.isBlank()) {
+            // Defensive: callers distinguish read-failure/empty before this, but a
+            // blank payload must never look like a successful import.
+            reportImportFileEmpty()
+            return
+        }
         viewModelScope.launch {
             val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                 PooyaHtmlParser.parsePortalHtml(html)
@@ -887,7 +1033,7 @@ class CoursePlannerViewModel @Inject constructor(
     }
 
     fun toggleDocumentBookmark(id: Long, current: Boolean) {
-        viewModelScope.launch {
+        launchDbWrite(onErrorMessage = { "تغییر وضعیت نشان‌گذاری جزوه ناموفق بود." }) {
             repository.toggleDocumentBookmark(id, !current)
         }
     }

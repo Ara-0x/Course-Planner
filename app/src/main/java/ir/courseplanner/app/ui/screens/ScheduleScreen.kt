@@ -543,9 +543,12 @@ fun ScheduleScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Apply Button
+                        // Apply Button — disabled while the result is incomplete
+                        // (some selected course has no usable group): applying it
+                        // would replace a complete program with a partial one.
                         Button(
                             onClick = { viewModel.applyCurrentGeneratedSchedule() },
+                            enabled = generationState.canApplyCurrent,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(44.dp)
@@ -560,6 +563,15 @@ fun ScheduleScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 softWrap = false
+                            )
+                        }
+
+                        if (!generationState.isComplete) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "اعمال غیرفعال است: این برنامه همهٔ دروس انتخاب‌شده را پوشش نمی‌دهد.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
 

@@ -56,8 +56,9 @@ interface SectionDao {
     @Query("SELECT * FROM course_sections WHERE id = :sectionId LIMIT 1")
     suspend fun getSectionById(sectionId: Long): CourseSection?
 
-    @Query("SELECT * FROM course_sections WHERE courseId = :courseId AND sectionCode = :code LIMIT 1")
-    suspend fun getSectionByCourseAndCode(courseId: Long, code: String): CourseSection?
+    // NOTE: there is intentionally no exact-match lookup by (courseId, code).
+    // Uniqueness is checked through `getSectionsByCourseId` + `normalizeCode`
+    // so " 01 " and "01" collide (see CourseRepository / CodeNormalization).
 
     /** Sections of one course, for re-import sync matched by sectionCode. */
     @Query("SELECT * FROM course_sections WHERE courseId = :courseId")

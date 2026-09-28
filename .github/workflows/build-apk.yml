@@ -88,6 +88,20 @@ jobs:
           fi
           chmod +x ./gradlew
 
+      # A private signing key once lived in git history (see docs/SECURITY.md).
+      # This gate makes sure no keystore/base64 material can ever be tracked
+      # again: the distribution key must exist ONLY in the GitHub secret and on
+      # the maintainer's machine.
+      - name: Secret-hygiene gate (no signing material tracked in git)
+        run: |
+          LEAKED=$(git ls-files | grep -Ei '\.(jks|keystore|b64|base64)$|(^|/)debug\.keystore$' || true)
+          if [ -n "$LEAKED" ]; then
+            echo "::error::Signing material is tracked in git — remove it now (it must live only in the DEBUG_KEYSTORE_BASE64 secret):"
+            echo "$LEAKED"
+            exit 1
+          fi
+          echo "OK: no keystore/base64 file is tracked."
+
       # Tests gate the APK: a red suite must never produce a release artifact.
       - name: Unit tests (must pass before assembling)
         run: ./gradlew testDebugUnitTest --stacktrace
@@ -181,11 +195,13 @@ jobs:
             ## 🎓 TermChin | ترم‌چین — نسخه ${{ env.VERSION_NAME }}
 
             ### ✨ جدید در این نسخه:
-            - 🧭 **دکمه «مشاهده برنامه هفتگی»:** در کارت «امروز» دیگر وارد برنامه‌ساز نمی‌شود؛ به‌جای آن به تقویم هفتگی همان صفحه خانه اسکرول می‌کند و کادر برنامه یک هایلایت کوتاه می‌گیرد
-            - 🎨 **ارتقای هر ۷ پالت رنگی:** هر تم اکنون نسخه روشن و تاریک اختصاصی با تمامی نقش‌های Material 3 (primary/secondary/tertiary، containerها، سطح‌ها، خطوط و رنگ خطا) دارد؛ چیپ‌ها، دیالوگ‌ها و کارت‌های آماری هم با تم هماهنگ می‌شوند
-            - 🌙 **رنگ‌های تاریک بازطراحی‌شده:** هر پالت در حالت شب لهجه و سطح‌های تیره مخصوص خودش را دارد (پیش‌تر لهجه روشن در حالت شب استفاده می‌شد)
-            - 🖼️ **انتخابگر تم مدرن:** کارت‌های دوستونی با نمونه‌رنگ گرادیانی و پیش‌نمایش روشن/تاریک هر تم در تنظیمات
-            - ✅ **تست کنتراست:** تست خودکار WCAG برای خوانایی متن روی هر ۱۴ اسکیم (۷ تم × ۲ حالت)
+            - 🛡️ **حذف پاکسازی خودکار هنگام اجرا:** دیگر هیچ به‌روزرسانی نمی‌تواند به‌خاطر یک پرچمِ گمشده، دیتابیس درس‌ها/برنامه/جزوات شما را پاک کند (با تست رگرسیون تضمین شده)
+            - 🚫 **برنامهٔ ناقص اعمال نمی‌شود:** اگر برای درسی از دروس انتخاب‌شده گروه قابل استفاده‌ای پیدا نشود، نامش گزارش می‌شود ولی دکمهٔ «اعمال» غیرفعال می‌ماند تا برنامهٔ کامل شما جایگزین نشود
+            - ✅ **کد درس/گروه یکتا و بدون کد ساختگی:** ثبت کد تکراری یا خالی فقط با پیام خطای مشخص رد می‌شود (دیگر `CRS-…` یا `01` خودکار ساخته نمی‌شود)
+            - ⏱️ **اعتبارسنجی جلسات هر گروه:** جلسات هم‌پوشانِ یک گروه (با رعایت زوج/فرد) قبل از ذخیره رد می‌شوند
+            - 📊 **توضیح امتیاز صادقانه:** جمع ردیف‌های «چرا این برنامه؟» همیشه برابر امتیاز نمایش‌داده‌شده است (به‌همراه ردیف صریح محدودسازی ۰ تا ۱۰۰)
+            - 📥 **تفکیک خطاهای دریافت فایل:** خطای خواندنِ فایل ≠ فایلِ خالی ≠ فایلِ بدونِ درس — هر کدام پیام جداگانه دارند
+            - 🧹 حذف کد بلااستفادهٔ WebView پرتال و بازنویسی README مطابق رفتار واقعی اپ
 
             > بعد از نصب، در صفحه «تنظیمات» پایین صفحه باید `v${{ env.VERSION_NAME }} (${{ env.VERSION_CODE }})` و هش کامیت جدید را ببینید.
           files: |

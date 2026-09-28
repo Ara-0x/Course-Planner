@@ -52,7 +52,9 @@ import androidx.compose.ui.window.DialogProperties
 import ir.courseplanner.app.data.model.ClassSession
 import ir.courseplanner.app.data.model.Course
 import ir.courseplanner.app.data.model.WeekType
+import ir.courseplanner.app.engine.SectionSessionValidator
 import ir.courseplanner.app.ui.ManualSessionInput
+import ir.courseplanner.app.ui.toClassSession
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -375,6 +377,11 @@ fun AddSectionDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    if (sectionCode.isBlank()) {
+                        // Never invent a group number: a blank code is an error.
+                        errorMessage = "کد گروه نمی‌تواند خالی باشد."
+                        return@Button
+                    }
                     for ((idx, sess) in sessions.withIndex()) {
                         if (sess.startTime.isBlank() || sess.endTime.isBlank()) {
                             errorMessage = "ساعت شروع و پایان جلسه ${idx + 1} الزامی است."
@@ -390,6 +397,20 @@ fun AddSectionDialog(
                             errorMessage = "در جلسه ${idx + 1}، ساعت شروع باید قبل از ساعت پایان باشد."
                             return@Button
                         }
+                    }
+                    // One group may not contain two sessions that clash with each
+                    // other (same shared rule the repository enforces).
+                    when (val clash = SectionSessionValidator.validate(sessions.map { it.toClassSession() })) {
+                        is SectionSessionValidator.Result.Overlap -> {
+                            errorMessage = "جلسه ${clash.firstIndex + 1} با جلسه ${clash.secondIndex + 1} " +
+                                "در ${ClassSession.getDayName(clash.dayOfWeek)} (${clash.overlapRange}) تداخل دارد."
+                            return@Button
+                        }
+                        is SectionSessionValidator.Result.InvalidTime -> {
+                            errorMessage = "در جلسه ${clash.index + 1}، ساعت شروع باید قبل از پایان باشد."
+                            return@Button
+                        }
+                        SectionSessionValidator.Result.Valid -> Unit
                     }
 
                     var examStart = ""

@@ -15,14 +15,42 @@ enum class OptimizationPreference(val titleFa: String, val descriptionFa: String
 
 data class ScoredSchedule(
     val schedule: List<SectionWithDetails>,
-    val score: Int, // 0 to 100, always the real computed score (never faked)
+    /** Final user-facing score: [rawScore] clamped into 0..100 (never faked). */
+    val score: Int,
     val totalGapMinutes: Int,
+    /**
+     * DISPLAY metric: distinct university days in the week, counting the union
+     * of odd and even weeks. A day that only has an odd-week class still counts,
+     * because the student has to keep that day free. See [ScheduleEngine.weeklyActiveDays]
+     * for the parity-aware figure the SCORE is computed from.
+     */
     val activeDaysCount: Int,
+    /**
+     * DISPLAY metric: sessions starting at/before 08:00 (union of parities).
+     * See [ScheduleEngine.weeklyEarlyMorningCount] for the scoring figure.
+     */
     val earlyMorningClassCount: Int,
     val totalWeeklyHours: Float,
     val tags: List<String>,
-    /** Explainable parts: base 100 plus weighted deductions (negative deltas). */
-    val breakdown: List<ScoreComponent> = emptyList()
+    /**
+     * Explainable parts: the +100 base, the weighted deductions and — only when
+     * the score had to be limited — an explicit clamp row. The deltas always add
+     * up to [score], so the breakdown can never contradict the headline number.
+     */
+    val breakdown: List<ScoreComponent> = emptyList(),
+    /**
+     * Unclamped score. Invariant: `breakdown.sumOf { it.delta } == rawScore`,
+     * and [score] is exactly [rawScore] limited to 0..100.
+     */
+    val rawScore: Int = score,
+    /**
+     * SCORING metric: weekly-average attendance days. A day whose only classes
+     * are biweekly (odd-only or even-only) is attended every other week and
+     * therefore counts 0.5 instead of 1.0.
+     */
+    val weeklyActiveDays: Double = activeDaysCount.toDouble(),
+    /** SCORING metric: weekly-average number of early sessions (biweekly = 0.5). */
+    val weeklyEarlyMorningCount: Double = earlyMorningClassCount.toDouble()
 )
 
 /** One explainable line of the quality score. [delta] is negative for deductions. */
@@ -47,7 +75,17 @@ data class ScheduleSearchResult(
     val truncated: Boolean,
     /** Selected courses that had zero usable sections and were reported, not dropped. */
     val skippedCourses: List<String>
-)
+) {
+    /**
+     * True only when EVERY selected course got a usable section.
+     *
+     * An incomplete result is informational: it may be shown (with the skipped
+     * course names) but it must never replace the user's current program, since
+     * that would silently drop the courses listed in [skippedCourses]. See
+     * `CourseRepository.applySchedule`, which refuses to persist such a result.
+     */
+    val isComplete: Boolean get() = skippedCourses.isEmpty()
+}
 
 object ScheduleEngine {
 
@@ -409,10 +447,69 @@ object ScheduleEngine {
     }
 
     /**
+     * Weekly-average attendance days (the figure the SCORE uses).
+     *
+     * Rule (single definition, so scoring can never "assume biweekly == weekly"):
+     * - a day that has a weekly (EVERY_WEEK) class, or classes in BOTH parities,
+     *   is attended every week → 1.0;
+     * - a day whose only classes are biweekly (odd-only or even-only) is attended
+     *   every other week → 0.5.
+     *
+     * Example: Saturday with an odd-week-only 8–10 class scores 0.5, whereas the
+     * same class every week scores 1.0. [computeMetrics]/[ScoredSchedule.activeDaysCount]
+     * intentionally keep the union count (a day you must keep free is a day you
+     * must keep free) for display.
+     */
+    fun weeklyActiveDays(sections: List<SectionWithDetails>): Double {
+        val sessionsByDay = sections.flatMap { it.sessions }.groupBy { it.dayOfWeek }
+        if (sessionsByDay.isEmpty()) return 0.0
+        return sessionsByDay.values.sumOf { daySessions ->
+            val everyWeek = daySessions.any { it.weekType == WeekType.EVERY_WEEK } ||
+                (
+                    daySessions.any { it.weekType == WeekType.ODD_WEEKS } &&
+                        daySessions.any { it.weekType == WeekType.EVEN_WEEKS }
+                    )
+            if (everyWeek) 1.0 else 0.5
+        }
+    }
+
+    /** Weekly-average number of 08:00 sessions (biweekly early session = 0.5). */
+    fun weeklyEarlyMorningCount(sections: List<SectionWithDetails>): Double =
+        sections.flatMap { it.sessions }
+            .filter { it.startMinutes <= EARLY_MORNING_CUTOFF_MINUTES }
+            .sumOf { if (it.weekType == WeekType.EVERY_WEEK) 1.0 else 0.5 }
+
+    /** 08:00 is the first slot of the university timetable (2-hour slots). */
+    private const val EARLY_MORNING_CUTOFF_MINUTES = 8 * 60
+
+    // ---- Scoring weights: the constants below ARE the documentation. ----
+    /** Idle-time penalty block: every 30 minutes of gap costs 3 points. */
+    private const val GAP_DEDUCTION_BLOCK_MINUTES = 30.0
+    private const val GAP_DEDUCTION_PER_BLOCK = 3.0
+    /** Up to this many effective weekly days is free (3 days is a good week). */
+    private const val FREE_ACTIVE_DAYS = 3.0
+    /** Every effective day above [FREE_ACTIVE_DAYS] costs 6 points. */
+    private const val DAY_DEDUCTION_PER_EXTRA_DAY = 6.0
+    /** Every effective 08:00 session costs 4 points. */
+    private const val EARLY_MORNING_DEDUCTION_PER_SESSION = 4.0
+
+    /**
      * Evaluates and scores a schedule based on user preferences.
+     *
+     * Score model (must stay consistent with [ScoreComponent] rows):
+     * `rawScore = 100 - weightedGaps - weightedDays - weightedEarly`, and the
+     * published [ScoredSchedule.score] is `rawScore` limited to 0..100. When the
+     * limit actually bites, an explicit clamp row is added to the breakdown so
+     * the rows always add up to the displayed score.
+     *
+     * Parity semantics: gaps ([calculateTotalGaps]) and the day/early-morning
+     * figures used for scoring ([weeklyActiveDays], [weeklyEarlyMorningCount])
+     * are weekly AVERAGES — a class that meets every other week is charged half,
+     * never as if it met every week.
+     *
      * Optimization goals:
      * - Minimize idle gap time between classes in the same day.
-     * - Minimize active days count.
+     * - Minimize effective active days count.
      * - Avoid 8 AM classes if preferred.
      */
     fun evaluateSchedule(
@@ -422,7 +519,9 @@ object ScheduleEngine {
         val allSessions = schedule.flatMap { it.sessions }
         val activeDays = allSessions.map { it.dayOfWeek }.toSet().size
         val totalGaps = calculateTotalGaps(schedule)
-        val earlyMorningCount = allSessions.count { it.startMinutes <= 480 } // 8:00 AM or earlier
+        val earlyMorningCount = allSessions.count { it.startMinutes <= EARLY_MORNING_CUTOFF_MINUTES }
+        val weeklyDays = weeklyActiveDays(schedule)
+        val weeklyEarly = weeklyEarlyMorningCount(schedule)
 
         val totalMinutes = averageWeeklyMinutes(schedule)
 
@@ -431,12 +530,15 @@ object ScheduleEngine {
         val breakdown = mutableListOf<ScoreComponent>()
         breakdown.add(ScoreComponent("امتیاز پایه", 100))
 
-        // Deduct points for gaps (each 30 min of idle gap drops 3 points)
-        val gapDeduction = (totalGaps / 30.0) * 3.0
-        // Deduct points for high number of days (each day above 3 drops 5 points)
-        val dayDeduction = maxOf(0, activeDays - 3) * 6.0
-        // Deduct points for 8 AM classes
-        val earlyDeduction = earlyMorningCount * 4.0
+        // Idle-time penalty (3 points per 30 minutes of gap).
+        val gapDeduction = (totalGaps / GAP_DEDUCTION_BLOCK_MINUTES) * GAP_DEDUCTION_PER_BLOCK
+        // Day penalty (6 points for every weekly-average day above 3 — the
+        // comment used to say "5" while the code used 6; the constant is now the
+        // only source of truth and matches the behaviour v2.x shipped).
+        val dayDeduction = maxOf(0.0, weeklyDays - FREE_ACTIVE_DAYS) * DAY_DEDUCTION_PER_EXTRA_DAY
+        // Early-morning penalty (4 points per weekly-average 08:00 session).
+        val earlyDeduction = weeklyEarly * EARLY_MORNING_DEDUCTION_PER_SESSION
+
 
         val weightedGap: Double
         val weightedDay: Double
@@ -471,15 +573,29 @@ object ScheduleEngine {
             breakdown.add(ScoreComponent("گپ بین کلاس‌ها ($totalGaps دقیقه)", gapDelta))
         }
         if (dayDelta != 0) {
-            breakdown.add(ScoreComponent("تعداد روزهای دانشگاه ($activeDays روز)", dayDelta))
+            breakdown.add(
+                ScoreComponent("روزهای حضور در هفته (${formatWeekly(weeklyDays)} روز)", dayDelta)
+            )
         }
         if (earlyDelta != 0) {
-            breakdown.add(ScoreComponent("کلاس صبح زود ($earlyMorningCount جلسه)", earlyDelta))
+            breakdown.add(
+                ScoreComponent(
+                    "کلاس صبح زود در هفته (${formatWeekly(weeklyEarly)} جلسه)",
+                    earlyDelta
+                )
+            )
         }
 
         val rawScore = 100.0 + gapDelta + dayDelta + earlyDelta
-        // Honest clamp: a terrible schedule scores 0, a perfect one 100.
-        val finalScore = rawScore.toInt().coerceIn(0, 100)
+        val rawScoreInt = rawScore.toInt()
+        // Honest clamp: a terrible schedule scores 0, a perfect one 100. The
+        // difference is recorded as its own row so the breakdown always adds up
+        // to the displayed score instead of silently contradicting it.
+        val finalScore = rawScoreInt.coerceIn(0, 100)
+        val clampDelta = finalScore - rawScoreInt
+        if (clampDelta != 0) {
+            breakdown.add(ScoreComponent("محدودسازی امتیاز به بازهٔ ۰ تا ۱۰۰", clampDelta))
+        }
 
         // Generate descriptive tags
         val tags = mutableListOf<String>()
@@ -505,9 +621,17 @@ object ScheduleEngine {
             earlyMorningClassCount = earlyMorningCount,
             totalWeeklyHours = totalMinutes / 60f,
             tags = tags,
-            breakdown = breakdown.toList()
+            breakdown = breakdown.toList(),
+            rawScore = rawScoreInt,
+            weeklyActiveDays = weeklyDays,
+            weeklyEarlyMorningCount = weeklyEarly
         )
     }
+
+    /** "3" / "3.5" — compact weekly-average formatting for the score breakdown. */
+    private fun formatWeekly(value: Double): String =
+        if (value % 1.0 == 0.0) value.toInt().toString()
+        else String.format(java.util.Locale.ROOT, "%.1f", value)
 
     /**
      * Ranks generated conflict-free schedules according to selected optimization goal.
@@ -607,6 +731,12 @@ object ScheduleEngine {
 
     /**
      * Computes basic metrics for a schedule.
+     *
+     * Day/early-morning semantics: a day (or an 08:00 session) counts when it
+     * exists in the union of odd and even weeks — this is the "how many days do
+     * I have to go to university" number shown to the user. The parity-aware
+     * weekly averages used for scoring are [weeklyActiveDays] /
+     * [weeklyEarlyMorningCount] / [averageWeeklyMinutes].
      */
     fun computeMetrics(sections: List<SectionWithDetails>): ScheduleMetrics {
         val totalCredits = sections.sumOf { it.course.credits }

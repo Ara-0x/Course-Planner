@@ -107,22 +107,41 @@ import kotlinx.coroutines.withContext
 
 private const val MAX_IMPORT_CHARS = 15_000_000
 
-/** Reads user-selected text without letting a huge file block the app. */
+/**
+ * Reads user-selected text without letting a huge file block the app.
+ *
+ * Throws when the content could not be opened at all: an unreadable file must
+ * NOT come back as an empty string, otherwise the import would claim "the file
+ * is empty" instead of "the file could not be read".
+ */
 private fun readImportText(context: Context, uri: Uri): String {
-    return context.contentResolver.openInputStream(uri)
-        ?.bufferedReader(Charsets.UTF_8)?.use { reader ->
-            val builder = StringBuilder()
-            val buffer = CharArray(8192)
-            var total = 0
-            while (true) {
-                val read = reader.read(buffer)
-                if (read < 0) break
-                total += read
-                require(total <= MAX_IMPORT_CHARS) { "فایل انتخاب‌شده بزرگ‌تر از حد مجاز است." }
-                builder.append(buffer, 0, read)
-            }
-            builder.toString()
-        }.orEmpty()
+    val stream = context.contentResolver.openInputStream(uri)
+        ?: throw java.io.IOException("input stream unavailable for $uri")
+    return stream.bufferedReader(Charsets.UTF_8).use { reader ->
+        val builder = StringBuilder()
+        val buffer = CharArray(8192)
+        var total = 0
+        while (true) {
+            val read = reader.read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= MAX_IMPORT_CHARS) { "فایل انتخاب‌شده بزرگ‌تر از حد مجاز است." }
+            builder.append(buffer, 0, read)
+        }
+        builder.toString()
+    }
+}
+
+/** Display name of a picked document (best effort; never throws). */
+private fun queryDisplayName(context: Context, uri: Uri): String? {
+    return try {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+        }
+    } catch (_: Exception) {
+        null
+    }
 }
 
 private fun String.normalizeDigitsForNumber(): String = map { char ->
@@ -155,25 +174,33 @@ fun SettingsScreen(
 
     // Portal HTML file picker: the saved "presented courses" page is parsed
     // off-main-thread into the hidden catalog (see PooyaHtmlParser).
+    // The four import stages stay distinguishable:
+    //   (1) file could not be read → error naming the file,
+    //   (2) file read but empty → "save the page again" error,
+    //   (3) file read, nothing extracted → parser failure message,
+    //   (4) courses imported → success message.
     val portalFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
-            var content = ""
-            var displayName: String? = null
-            try {
-                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (cursor.moveToFirst() && idx >= 0) displayName = cursor.getString(idx)
+            val displayName = queryDisplayName(context, uri)
+            val content = try {
+                readImportText(context, uri)
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    portalFileName = displayName
+                    viewModel.reportImportFileReadFailed(e.toString(), displayName)
                 }
-                content = readImportText(context, uri)
-            } catch (_: Exception) {
-                content = ""
+                return@launch
             }
             withContext(Dispatchers.Main) {
                 portalFileName = displayName
-                viewModel.importPortalHtml(content, clearExisting = false)
+                if (content.isBlank()) {
+                    viewModel.reportImportFileEmpty(displayName)
+                } else {
+                    viewModel.importPortalHtml(content, clearExisting = false)
+                }
             }
         }
     }
@@ -183,9 +210,16 @@ fun SettingsScreen(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
-            val content = try { readImportText(context, uri) } catch (_: Exception) { "" }
+            val displayName = queryDisplayName(context, uri)
+            val content = try {
+                readImportText(context, uri)
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { viewModel.reportImportFileReadFailed(e.toString(), displayName) }
+                return@launch
+            }
             withContext(Dispatchers.Main) {
-                viewModel.importData(content, isJson = true, clearExisting = false)
+                if (content.isBlank()) viewModel.reportImportFileEmpty(displayName)
+                else viewModel.importData(content, isJson = true, clearExisting = false)
             }
         }
     }
@@ -195,9 +229,16 @@ fun SettingsScreen(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
-            val content = try { readImportText(context, uri) } catch (_: Exception) { "" }
+            val displayName = queryDisplayName(context, uri)
+            val content = try {
+                readImportText(context, uri)
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { viewModel.reportImportFileReadFailed(e.toString(), displayName) }
+                return@launch
+            }
             withContext(Dispatchers.Main) {
-                viewModel.importData(content, isJson = false, clearExisting = false)
+                if (content.isBlank()) viewModel.reportImportFileEmpty(displayName)
+                else viewModel.importData(content, isJson = false, clearExisting = false)
             }
         }
     }

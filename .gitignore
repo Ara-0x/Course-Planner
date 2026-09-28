@@ -55,10 +55,13 @@ captures/
 .idea/render.experimental.xml
 
 # Keystore files (never commit real keys; CI restores the debug keystore from
-# the DEBUG_KEYSTORE_BASE64 repository secret — see README "امضای بیلد و CI")
+# the DEBUG_KEYSTORE_BASE64 repository secret — see README "امضای بیلد و CI"
+# and docs/SECURITY.md). The `git ls-files` gate in .github/workflows/build-apk.yml
+# fails the build if any file matching these patterns is ever tracked again.
 *.jks
 *.keystore
 *.base64
+*.b64
 debug.keystore
 .ci-secrets/
 

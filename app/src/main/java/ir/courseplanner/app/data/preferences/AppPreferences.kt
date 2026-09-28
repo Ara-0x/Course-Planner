@@ -18,7 +18,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -177,13 +176,6 @@ class PreferencesManager @Inject constructor(
         update { it[KEY_FIRST_WEEK_IS_ODD] = firstWeekIsOdd }
     }
 
-    suspend fun isReleaseCleanDone(): Boolean =
-        dataStore.data.map { it[KEY_RELEASE_CLEAN] ?: false }.first()
-
-    suspend fun markReleaseCleanDone() {
-        dataStore.edit { it[KEY_RELEASE_CLEAN] = true }
-    }
-
     private fun Preferences.toUserPreferences(): UserPreferences {
         return UserPreferences(
             theme = AppColorTheme.fromId(this[KEY_THEME]),
@@ -211,6 +203,11 @@ class PreferencesManager @Inject constructor(
         private val KEY_DENSITY = stringPreferencesKey("timetable_density")
         private val KEY_SEMESTER_START_EPOCH_DAY = longPreferencesKey("semester_start_epoch_day")
         private val KEY_FIRST_WEEK_IS_ODD = booleanPreferencesKey("first_week_is_odd")
-        private val KEY_RELEASE_CLEAN = booleanPreferencesKey("release_clean_courses_v1")
+        // NOTE: the old "release_clean_courses_v1" marker was removed in v2.4.1.
+        // It gated an automatic `clearAllData()` on startup ("marker missing →
+        // wipe the database"), which could erase a real student's data whenever
+        // the flag was absent. There is no replacement flag: nothing may delete
+        // user data automatically. A stale value in an old DataStore file is
+        // simply ignored.
     }
 }

@@ -57,7 +57,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import ir.courseplanner.app.data.model.ClassSession
 import ir.courseplanner.app.data.model.WeekType
+import ir.courseplanner.app.engine.SectionSessionValidator
 import ir.courseplanner.app.ui.ManualSessionInput
+import ir.courseplanner.app.ui.toClassSession
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -349,6 +351,16 @@ fun AddCourseDialog(
                         errorMessage = "نام درس نمی‌تواند خالی باشد."
                         return@Button
                     }
+                    if (code.isBlank()) {
+                        // A course code is real domain data (needed to match the
+                        // portal / re-import); it is never auto-generated.
+                        errorMessage = "کد درس الزامی است؛ لطفاً کد واقعی درس را وارد کنید."
+                        return@Button
+                    }
+                    if (sectionCode.isBlank()) {
+                        errorMessage = "کد گروه نمی‌تواند خالی باشد."
+                        return@Button
+                    }
                     for ((idx, sess) in sessions.withIndex()) {
                         if (sess.startTime.isBlank() || sess.endTime.isBlank()) {
                             errorMessage = "ساعت شروع و پایان جلسه ${idx + 1} الزامی است."
@@ -364,6 +376,21 @@ fun AddCourseDialog(
                             errorMessage = "در جلسه ${idx + 1}، ساعت شروع باید قبل از ساعت پایان باشد."
                             return@Button
                         }
+                    }
+                    // Sessions of ONE group must not clash with each other
+                    // (same day + overlapping week parity + overlapping clock).
+                    // Shared rule with the repository: SectionSessionValidator.
+                    when (val clash = SectionSessionValidator.validate(sessions.map { it.toClassSession() })) {
+                        is SectionSessionValidator.Result.Overlap -> {
+                            errorMessage = "جلسه ${clash.firstIndex + 1} با جلسه ${clash.secondIndex + 1} " +
+                                "در ${ClassSession.getDayName(clash.dayOfWeek)} (${clash.overlapRange}) تداخل دارد."
+                            return@Button
+                        }
+                        is SectionSessionValidator.Result.InvalidTime -> {
+                            errorMessage = "در جلسه ${clash.index + 1}، ساعت شروع باید قبل از پایان باشد."
+                            return@Button
+                        }
+                        SectionSessionValidator.Result.Valid -> Unit
                     }
 
                     // Parse exam times

@@ -12,6 +12,8 @@ import ir.courseplanner.app.data.model.CourseDocument
 import ir.courseplanner.app.data.model.CourseSection
 import ir.courseplanner.app.data.model.CourseWithSections
 import ir.courseplanner.app.data.model.SectionWithDetails
+import ir.courseplanner.app.data.model.normalizeCode
+import ir.courseplanner.app.engine.SectionSessionValidator
 import kotlinx.coroutines.flow.Flow
 
 class CourseRepository(
@@ -143,42 +145,124 @@ class CourseRepository(
     }
 
     /**
-     * Inserts a manually created course along with its first section and class sessions.
+     * Inserts a manually created course together with its first section and
+     * class sessions, in ONE transaction.
+     *
+     * Data-integrity rules (never "fix up" the input, never insert a bad row):
+     * - blank course code / blank section code → rejected ([AddCourseResult.BlankCode] /
+     *   [AddCourseResult.BlankSectionCode]); a course code is meaningful domain
+     *   data, so it is never synthesized (the old code generated a random
+     *   `CRS-1234` code, which silently produced unmatchable courses);
+     * - the normalized course code must be unique in the catalog;
+     * - the first section's sessions may not overlap each other.
      */
     suspend fun addManualCourse(
         course: Course,
         section: CourseSection,
         sessions: List<ClassSession>
-    ): Long = db.withTransaction {
-        val courseId = courseDao.insertCourse(course)
-        val sectionId = sectionDao.insertSection(section.copy(courseId = courseId))
+    ): AddCourseResult = db.withTransaction {
+        if (course.code.isBlank()) return@withTransaction AddCourseResult.BlankCode
+        if (section.sectionCode.isBlank()) return@withTransaction AddCourseResult.BlankSectionCode
+        if (findCourseByNormalizedCode(course.code) != null) {
+            return@withTransaction AddCourseResult.DuplicateCode
+        }
+        when (SectionSessionValidator.validate(sessions)) {
+            is SectionSessionValidator.Result.InvalidTime -> return@withTransaction AddCourseResult.InvalidSessions
+            is SectionSessionValidator.Result.Overlap -> return@withTransaction AddCourseResult.ConflictingSessions
+            SectionSessionValidator.Result.Valid -> Unit
+        }
+        val courseId = courseDao.insertCourse(course.copy(code = course.code.trim()))
+        val sectionId = sectionDao.insertSection(
+            section.copy(courseId = courseId, sectionCode = section.sectionCode.trim())
+        )
         val sessionsWithSec = sessions.map { it.copy(sectionId = sectionId) }
         sectionDao.insertSessions(sessionsWithSec)
-        courseId
+        AddCourseResult.Success(courseId)
+    }
+
+    /** Course whose code equals [code] after [normalizeCode], or null. */
+    private suspend fun findCourseByNormalizedCode(code: String, excludingCourseId: Long? = null): Course? {
+        val wanted = normalizeCode(code)
+        return courseDao.getAllCoursesOnce()
+            .firstOrNull { it.id != excludingCourseId && normalizeCode(it.code) == wanted }
     }
 
     /**
-     * Adds an additional section/group to an existing course.
+     * Adds a manual section/group to an existing course.
+     *
+     * Enforces the group invariants at the DATA layer (the dialogs check them
+     * too for a nicer error, but the repository is the one that must hold):
+     * - the code may not be blank (never invent a group number);
+     * - the code must be unique inside this course (`MATH101` may have one and
+     *   only one group "01"); the same code under a different course is fine;
+     * - the sessions of the new group may not contradict each other.
      */
     suspend fun addSectionToCourse(
         courseId: Long,
         section: CourseSection,
         sessions: List<ClassSession>
-    ): Long = db.withTransaction {
-        val sectionId = sectionDao.insertSection(section.copy(courseId = courseId))
+    ): AddSectionResult = db.withTransaction {
+        if (section.sectionCode.isBlank()) return@withTransaction AddSectionResult.BlankCode
+        courseDao.getCourseById(courseId) ?: return@withTransaction AddSectionResult.CourseNotFound
+        val newCode = normalizeCode(section.sectionCode)
+        val duplicate = sectionDao.getSectionsByCourseId(courseId)
+            .any { normalizeCode(it.sectionCode) == newCode }
+        if (duplicate) return@withTransaction AddSectionResult.DuplicateCode
+        when (SectionSessionValidator.validate(sessions)) {
+            is SectionSessionValidator.Result.InvalidTime -> return@withTransaction AddSectionResult.InvalidSessions
+            is SectionSessionValidator.Result.Overlap -> return@withTransaction AddSectionResult.ConflictingSessions
+            SectionSessionValidator.Result.Valid -> Unit
+        }
+        val sectionId = sectionDao.insertSection(section.copy(courseId = courseId, sectionCode = section.sectionCode.trim()))
         val sessionsWithSec = sessions.map { it.copy(sectionId = sectionId) }
         sectionDao.insertSessions(sessionsWithSec)
-        sectionId
+        AddSectionResult.Success(sectionId)
     }
 
     suspend fun deleteCourse(courseId: Long) {
         courseDao.deleteCourseById(courseId)
     }
 
+    sealed interface AddCourseResult {
+        data class Success(val courseId: Long) : AddCourseResult
+        /** Another course already uses this code (compared with [normalizeCode]). */
+        data object DuplicateCode : AddCourseResult
+        data object BlankCode : AddCourseResult
+        data object BlankSectionCode : AddCourseResult
+        /** Two sessions of the new group overlap each other. */
+        data object ConflictingSessions : AddCourseResult
+        /** Unparseable time or start >= end. */
+        data object InvalidSessions : AddCourseResult
+    }
+
+    sealed interface AddSectionResult {
+        data class Success(val sectionId: Long) : AddSectionResult
+        /** This course already has a group with the same normalized code. */
+        data object DuplicateCode : AddSectionResult
+        data object BlankCode : AddSectionResult
+        data object CourseNotFound : AddSectionResult
+        data object ConflictingSessions : AddSectionResult
+        data object InvalidSessions : AddSectionResult
+    }
+
+    sealed interface ApplyScheduleResult {
+        data object Success : ApplyScheduleResult
+        /** Nothing to apply (empty list). */
+        data object Empty : ApplyScheduleResult
+        /**
+         * The candidate schedule does not cover every course currently selected
+         * for generation, so applying it would DROP those courses from the user's
+         * program. The write is refused and [missingCourseNames] is reported.
+         */
+        data class Incomplete(val missingCourseNames: List<String>) : ApplyScheduleResult
+    }
+
     sealed interface UpdateCourseResult {
         data object Success : UpdateCourseResult
         data object DuplicateCode : UpdateCourseResult
         data object NotFound : UpdateCourseResult
+        /** A course must always have a code — no silent "CRS-1234" fallback. */
+        data object BlankCode : UpdateCourseResult
     }
 
     /**
@@ -186,6 +270,10 @@ class CourseRepository(
      * Sections, enrollments, generator flag and documents are untouched, so the
      * user never has to delete and re-add a course to fix a typo. Runs in a
      * transaction together with the duplicate-code check.
+     *
+     * Invariant parity with creation: a blank code is refused and the code is
+     * compared in normalized form (same rule as [addManualCourse]), so editing
+     * cannot produce the duplicate the create path already prevents.
      */
     suspend fun updateCourseDetails(
         courseId: Long,
@@ -194,13 +282,13 @@ class CourseRepository(
         department: String,
         credits: Int
     ): UpdateCourseResult = db.withTransaction {
+        if (code.isBlank()) return@withTransaction UpdateCourseResult.BlankCode
         val current = courseDao.getCourseById(courseId) ?: return@withTransaction UpdateCourseResult.NotFound
-        val clash = courseDao.getCourseByCode(code)
-        if (clash != null && clash.id != courseId) {
+        if (findCourseByNormalizedCode(code, excludingCourseId = courseId) != null) {
             return@withTransaction UpdateCourseResult.DuplicateCode
         }
         courseDao.updateCourse(
-            current.copy(name = name, code = code, department = department, credits = credits)
+            current.copy(name = name, code = code.trim(), department = department, credits = credits)
         )
         UpdateCourseResult.Success
     }
@@ -213,12 +301,18 @@ class CourseRepository(
         data object Success : UpdateSectionResult
         data object DuplicateCode : UpdateSectionResult
         data object NotFound : UpdateSectionResult
+        data object BlankCode : UpdateSectionResult
+        data object ConflictingSessions : UpdateSectionResult
+        data object InvalidSessions : UpdateSectionResult
     }
 
     /**
      * Updates a section/group in place: code, instructor, exam fields plus the
      * full session list (replaced atomically). Enrollment flag is preserved so
      * editing an enrolled group never drops it from the weekly program.
+     *
+     * Same invariants as [addSectionToCourse]: non-blank unique code inside its
+     * course, and a self-consistent session list.
      */
     suspend fun updateSectionDetails(
         sectionId: Long,
@@ -229,11 +323,19 @@ class CourseRepository(
         examEndTime: String,
         sessions: List<ClassSession>
     ): UpdateSectionResult = db.withTransaction {
+        if (sectionCode.isBlank()) return@withTransaction UpdateSectionResult.BlankCode
         val current = sectionDao.getSectionById(sectionId)
             ?: return@withTransaction UpdateSectionResult.NotFound
-        val clash = sectionDao.getSectionByCourseAndCode(current.courseId, sectionCode.trim())
-        if (clash != null && clash.id != sectionId) {
+        val newCode = normalizeCode(sectionCode)
+        val clash = sectionDao.getSectionsByCourseId(current.courseId)
+            .any { it.id != sectionId && normalizeCode(it.sectionCode) == newCode }
+        if (clash) {
             return@withTransaction UpdateSectionResult.DuplicateCode
+        }
+        when (SectionSessionValidator.validate(sessions)) {
+            is SectionSessionValidator.Result.InvalidTime -> return@withTransaction UpdateSectionResult.InvalidSessions
+            is SectionSessionValidator.Result.Overlap -> return@withTransaction UpdateSectionResult.ConflictingSessions
+            SectionSessionValidator.Result.Valid -> Unit
         }
         sectionDao.updateSection(
             current.copy(
@@ -265,13 +367,29 @@ class CourseRepository(
         }
     }
 
-    suspend fun applySchedule(sections: List<SectionWithDetails>) {
-        db.withTransaction {
-            sectionDao.clearAllEnrollments()
-            for (sec in sections) {
-                sectionDao.setSectionEnrolled(sec.section.id, true)
-            }
+    /**
+     * Replaces the weekly program with [sections] (the user's pick from the
+     * generator or from a group).
+     *
+     * SAFETY: a partial result must never overwrite a complete program. The
+     * candidate is rejected with [ApplyScheduleResult.Incomplete] when it does
+     * not cover every course currently selected for generation — applying it
+     * would silently remove those courses (the generator reports such courses in
+     * `ScheduleSearchResult.skippedCourses` and refuses to apply them).
+     */
+    suspend fun applySchedule(sections: List<SectionWithDetails>): ApplyScheduleResult = db.withTransaction {
+        if (sections.isEmpty()) return@withTransaction ApplyScheduleResult.Empty
+        val selected = courseDao.getCoursesSelectedForGenerationOnce()
+        val coveredCourseIds = sections.map { it.course.id }.toSet()
+        val missing = selected.filterNot { coveredCourseIds.contains(it.id) }.map { it.name }
+        if (missing.isNotEmpty()) {
+            return@withTransaction ApplyScheduleResult.Incomplete(missing)
         }
+        sectionDao.clearAllEnrollments()
+        for (sec in sections) {
+            sectionDao.setSectionEnrolled(sec.section.id, true)
+        }
+        ApplyScheduleResult.Success
     }
 
     suspend fun clearEnrollments() {

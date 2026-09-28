@@ -34,6 +34,17 @@ interface CourseDao {
     @Query("SELECT * FROM courses WHERE isSelectedForGeneration = 1 ORDER BY code ASC")
     fun getCoursesSelectedForGeneration(): Flow<List<CourseWithSections>>
 
+    /**
+     * One-shot snapshot of every course, used for case/space-insensitive code
+     * uniqueness checks (normalization lives in Kotlin — `normalizeCode` — so
+     * there is exactly one definition of "same code" in the app).
+     */
+    @Query("SELECT * FROM courses")
+    suspend fun getAllCoursesOnce(): List<Course>
+
+    @Query("SELECT * FROM courses WHERE isSelectedForGeneration = 1")
+    suspend fun getCoursesSelectedForGenerationOnce(): List<Course>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCourse(course: Course): Long
 
