@@ -57,29 +57,33 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
 
-      # The debug keystore IS this app's distribution key (released APKs are
-      # debug-signed), so its signature must stay identical across runs —
-      # otherwise users cannot install updates. It lives in the
-      # DEBUG_KEYSTORE_BASE64 repository secret and must never be committed.
-      - name: Restore debug keystore (stable APK signature)
+      # The RELEASE keystore signs every official APK and lives ONLY in the
+      # RELEASE_KEYSTORE_BASE64 repository secret (never in git). It is written
+      # to the runner's temp dir — outside the workspace — and deleted at the end
+      # of the job. The historical debug key is retired; see docs/SECURITY.md.
+      - name: Restore release keystore (never from git)
         env:
-          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          KS="$GITHUB_WORKSPACE/.ci-secrets/debug.keystore"
-          mkdir -p "$(dirname "$KS")"
-          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
-            printf '%s' "$DEBUG_KEYSTORE_B64" | base64 -d > "$KS"
-            echo "Restored debug keystore from DEBUG_KEYSTORE_BASE64 secret."
-            echo "KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
-          else
-            echo "::warning::DEBUG_KEYSTORE_BASE64 secret is missing — the build falls back to AGP's auto-generated debug key, whose APK cannot install as an update over released builds."
+          KS="$RUNNER_TEMP/termchin-release.jks"
+          MISSING=""
+          [ -n "$RELEASE_KEYSTORE_B64" ] || MISSING="$MISSING RELEASE_KEYSTORE_BASE64"
+          [ -n "$RELEASE_KEYSTORE_PASSWORD" ] || MISSING="$MISSING RELEASE_KEYSTORE_PASSWORD"
+          [ -n "$RELEASE_KEY_ALIAS" ] || MISSING="$MISSING RELEASE_KEY_ALIAS"
+          [ -n "$RELEASE_KEY_PASSWORD" ] || MISSING="$MISSING RELEASE_KEY_PASSWORD"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing signing secret(s):$MISSING — refusing to build an unsigned release APK."
+            exit 1
           fi
-          if [ -f "$KS" ]; then
-            ls -lh "$KS"
-            # A certificate fingerprint is public data; print it so the log
-            # proves which key the build was handed.
-            keytool -list -v -keystore "$KS" -storepass android -alias androiddebugkey 2>/dev/null | grep -E 'Owner:|SHA256:' || true
-          fi
+          umask 077
+          printf '%s' "$RELEASE_KEYSTORE_B64" | base64 -d > "$KS"
+          echo "RELEASE_KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
+          # A certificate fingerprint is public data; print it so the log proves
+          # which key the build was handed.
+          keytool -list -v -keystore "$KS" -storepass "$RELEASE_KEYSTORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" | grep -E 'Owner:|SHA256:' || true
 
       - name: Ensure Gradle Wrapper
         run: |
@@ -96,7 +100,7 @@ jobs:
         run: |
           LEAKED=$(git ls-files | grep -Ei '\.(jks|keystore|b64|base64)$|(^|/)debug\.keystore$' || true)
           if [ -n "$LEAKED" ]; then
-            echo "::error::Signing material is tracked in git — remove it now (it must live only in the DEBUG_KEYSTORE_BASE64 secret):"
+            echo "::error::Signing material is tracked in git — remove it now (it must live only in the RELEASE_KEYSTORE_BASE64 secret):"
             echo "$LEAKED"
             exit 1
           fi
@@ -109,40 +113,40 @@ jobs:
       # IMPORTANT: `clean` + --no-configuration-cache guarantees the APK is
       # rebuilt from current sources. Without clean, stale dex/resources from
       # the Gradle cache can make it look like "changes didn't land on APK".
-      - name: Build Debug APK (clean rebuild from current sources)
-        env:
-          CI_KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
-        run: ./gradlew clean assembleDebug --no-configuration-cache --stacktrace
+      - name: Build Release APK (clean rebuild from current sources)
+        run: ./gradlew clean assembleRelease --no-configuration-cache --stacktrace
 
       - name: Verify APK carries new version (fail if stale)
         run: |
-          APK=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
           echo "APK=$APK"
-          ls -lh app/build/outputs/apk/debug/
+          ls -lh app/build/outputs/apk/release/
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 5
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='$VERSION_CODE'|versionName='$VERSION_NAME'" \
             || (echo "::error::APK version mismatch: expected versionCode $VERSION_CODE / versionName $VERSION_NAME. Stale build?"; exit 1)
 
-      # Released APKs must carry the SAME certificate as every previous release,
-      # otherwise Android rejects the update (INSTALL_FAILED_UPDATE_INCOMPATIBLE)
-      # and users have to uninstall first. The constant below is the public
-      # SHA-256 fingerprint of the historical debug key that signs v2.0 … v2.3.
-      - name: Signature gate (APK must match the historical release key)
+      # Official APKs must carry the CURRENT TermChin release certificate, and a
+      # debug-signed APK must never reach a release. The constant below is the
+      # public SHA-256 fingerprint of the release key generated for the 2026-09
+      # migration (the historical debug key fcced2ea… is retired). A mismatch —
+      # including a debug/throwaway signature — fails the build.
+      - name: Signature gate (APK must carry the current release key)
         env:
-          EXPECTED_SIGNER_SHA256: fcced2ea0574ba6c7b9536c44846c2b697e1f841507af9e4ed00ed910bbe10ff
+          EXPECTED_SIGNER_SHA256: 0d38aa655105b0af6a0c0a1d26b37dbb872d20b6b4ab63fbeb9f88aa195adda0
         run: |
-          APK=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::error::No release APK found to verify."
+            exit 1
+          fi
           FP=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr 'A-F' 'a-f')
           echo "APK signer SHA-256 : $FP"
           echo "expected           : $EXPECTED_SIGNER_SHA256"
-          if [ "$FP" = "$EXPECTED_SIGNER_SHA256" ]; then
-            echo "Signature matches the historical release key — the APK will install as an update."
-          elif [ -z "$KEYSTORE_PATH" ]; then
-            echo "::warning::DEBUG_KEYSTORE_BASE64 was unavailable, so the APK carries a throwaway debug key. Skipping comparison (no release should be published from such a build)."
-          else
-            echo "::error::APK is signed with an unexpected key. Installed builds would not be updatable — check the DEBUG_KEYSTORE_BASE64 secret and CI_KEYSTORE_PATH plumbing."
+          if [ "$FP" != "$EXPECTED_SIGNER_SHA256" ]; then
+            echo "::error::APK is not signed with the TermChin release key — refusing to publish. Check RELEASE_KEYSTORE_BASE64 / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD."
             exit 1
           fi
+          echo "Signature matches the TermChin release key."
 
       # A release can no longer ship with an unchanged version: on v* tags the
       # tag must equal versionName and versionCode must be strictly greater
@@ -174,8 +178,8 @@ jobs:
       - name: Prepare APK Asset (unique name busts CDN/browser cache)
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v${VERSION_NAME}-${HEAD_SHA}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "release-output/CoursePlanner-v${VERSION_NAME}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "release-output/CoursePlanner-v${VERSION_NAME}-${HEAD_SHA}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "release-output/CoursePlanner-v${VERSION_NAME}.apk"
           ls -la release-output/
           sha256sum release-output/*.apk
 
@@ -215,3 +219,10 @@ jobs:
         with:
           name: TermChin-v${{ env.VERSION_NAME }}-APK-${{ env.HEAD_SHA }}
           path: release-output/CoursePlanner-v${{ env.VERSION_NAME }}.apk
+
+      # The restored keystore must not survive the job. RUNNER_TEMP is wiped
+      # with the runner anyway; this makes the intent explicit and covers
+      # self-hosted runners.
+      - name: Remove restored release keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/termchin-release.jks"

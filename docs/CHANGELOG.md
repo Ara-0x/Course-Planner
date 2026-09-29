@@ -4,6 +4,35 @@ Notable changes to TermChin (Course Planner), newest first.
 Versions are written as `versionName (versionCode)` exactly as they appear in
 `app/build.gradle.kts` — the single source of truth also checked by CI.
 
+## [unreleased] — 2026-09-29 signing-key migration
+
+### Security / build
+
+- **Signing key rotated.** The historical key that signed the released APKs
+  (v2.0.0–v2.5.0, certificate SHA-256 `fcced2ea…`, `CN=Android Debug`) is
+  retired, because its private key had been committed to this public
+  repository. Official APKs are now signed with a dedicated release key —
+  `CN=TermChin Release`, SHA-256
+  `0d38aa655105b0af6a0c0a1d26b37dbb872d20b6b4ab63fbeb9f88aa195adda0` — generated
+  outside the Git working tree and handed to the build only through the
+  environment / GitHub Actions secrets.
+- **No silent fallbacks.** `assembleRelease` now depends on the
+  `verifyReleaseSigning` task, which fails the build with an explicit message
+  when the keystore or a password is missing: a release is never unsigned and
+  never debug-signed. Debug builds keep AGP's local debug keystore.
+- **CI builds the release variant.** `.github/workflows/build-apk.yml` restores
+  `RELEASE_KEYSTORE_BASE64` into `$RUNNER_TEMP` (outside the workspace), removes
+  it after the job, aborts when any signing secret is missing, assembles
+  `assembleRelease`, and its signature gate now pins the NEW fingerprint — a
+  debug-signed or otherwise wrong APK fails the run.
+- **History cleanup.** The compromised blob is removed from every reachable
+  branch and tag with `git filter-repo` plus a force-push, so the old commit is
+  no longer reachable from repository refs.
+- **Breaking change for installs.** Because the certificate changed, Android
+  refuses an update over v2.0.0–v2.5.0
+  (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`): users must uninstall once and then
+  install the new APK. Details and remaining risks: `docs/SECURITY.md`.
+
 ## [2.5.0] — 2026-09-28 integrity pass
 
 ### Fixed (critical data safety)

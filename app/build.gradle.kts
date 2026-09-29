@@ -35,60 +35,90 @@ android {
     buildConfigField("String", "BUILD_TIME", "\"${Instant.now()}\"")
   }
 
-  // Release signing: non-secret values (keystore path, alias) live in
-  // gradle.properties; passwords come ONLY from the environment
-  // (STORE_PASSWORD / KEY_PASSWORD) or -P flags — never from a committed file.
+  // Release signing: the private keystore lives OUTSIDE this repository and is
+  // never committed. Non-secret values (keystore path, alias) come from
+  // gradle.properties or the environment; passwords come ONLY from the
+  // environment (RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_PASSWORD, or the
+  // legacy STORE_PASSWORD / KEY_PASSWORD) or -P flags.
+  //
+  // The distribution key was ROTATED in 2026-09 after the historical debug key
+  // leaked into public git history; the old certificate must not sign anything
+  // again. See docs/SECURITY.md for the current fingerprint and the policy.
   signingConfigs {
     create("release") {
-      storeFile = rootProject.file((findProperty("KEYSTORE_PATH") as String?) ?: "my-upload-key.jks")
-      keyAlias = (findProperty("KEY_ALIAS") as String?) ?: "upload"
-      storePassword = System.getenv("STORE_PASSWORD") ?: (findProperty("STORE_PASSWORD") as String?)
-      keyPassword = System.getenv("KEY_PASSWORD") ?: (findProperty("KEY_PASSWORD") as String?)
-    }
-    // Released APKs are debug-signed, so the debug key IS the distribution key:
-    // every release must carry the same certificate or Android refuses the
-    // update over an installed build. Relying on AGP's implicit
-    // ~/.android/debug.keystore proved unreliable in CI (the runner silently
-    // generated a throwaway key), so CI restores the historical key and passes
-    // its path through CI_KEYSTORE_PATH. Local builds leave it unset and keep
-    // AGP's zero-setup default debug key.
-    val ciDebugKeystore = (System.getenv("CI_KEYSTORE_PATH") ?: "").trim()
-    if (ciDebugKeystore.isNotEmpty() && rootProject.file(ciDebugKeystore).exists()) {
-      create("ciDebug") {
-        storeFile = rootProject.file(ciDebugKeystore)
-        storePassword = System.getenv("CI_KEYSTORE_PASSWORD") ?: "android"
-        keyAlias = System.getenv("CI_KEY_ALIAS") ?: "androiddebugkey"
-        keyPassword = System.getenv("CI_KEY_PASSWORD") ?: "android"
-      }
+      storeFile = rootProject.file(
+        System.getenv("RELEASE_KEYSTORE_PATH")
+          ?: (findProperty("RELEASE_KEYSTORE_PATH") as String?)
+          ?: (findProperty("KEYSTORE_PATH") as String?)
+          ?: "termchin-release.jks",
+      )
+      keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+        ?: (findProperty("RELEASE_KEY_ALIAS") as String?)
+        ?: (findProperty("KEY_ALIAS") as String?)
+        ?: "termchin-release"
+      storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+        ?: System.getenv("STORE_PASSWORD")
+        ?: (findProperty("STORE_PASSWORD") as String?)
+      keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+        ?: System.getenv("KEY_PASSWORD")
+        ?: (findProperty("KEY_PASSWORD") as String?)
     }
   }
 
   buildTypes {
-    debug {
-      // Pin the debug signer to the CI-restored keystore when one was provided.
-      val ciDebugSigning = signingConfigs.findByName("ciDebug")
-      if (ciDebugSigning != null) {
-        signingConfig = ciDebugSigning
-      }
-    }
     release {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      // Sign only when the keystore file and both passwords are present;
-      // otherwise `assembleRelease` produces an unsigned APK (by design —
-      // a machine without credentials must never ship a signed artifact).
-      val releaseSigning = signingConfigs.getByName("release")
-      if (releaseSigning.storeFile?.exists() == true &&
-        releaseSigning.storePassword != null &&
-        releaseSigning.keyPassword != null
-      ) {
-        signingConfig = releaseSigning
+      // Official releases are ALWAYS signed with the release keystore. There is
+      // deliberately no fallback to the debug keystore and no unsigned
+      // artifact: when credentials are missing, the `verifyReleaseSigning` task
+      // registered below fails the build loudly.
+      signingConfig = signingConfigs.getByName("release")
+    }
+    // debug: AGP's own debug keystore (~/.android/debug.keystore, auto-created
+    // on first build) — a fresh clone still builds with zero setup, and the
+    // debug key is never used to sign a released APK.
+  }
+
+  // --- Release signing guard -------------------------------------------------
+  // A machine without credentials must never produce a release artifact, and a
+  // misconfigured CI run must never publish a debug-signed or unsigned APK.
+  // Every release packaging task therefore depends on this explicit check.
+  val guardKeystoreFile: File? = signingConfigs.getByName("release").storeFile
+  val guardAlias: String? = signingConfigs.getByName("release").keyAlias
+  val guardStorePassword: String? = signingConfigs.getByName("release").storePassword
+  val guardKeyPassword: String? = signingConfigs.getByName("release").keyPassword
+  val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
+    group = "verification"
+    description = "Fails when the release signing keystore or its passwords are missing."
+    doLast {
+      val missing = listOfNotNull(
+        "keystore file $guardKeystoreFile (set RELEASE_KEYSTORE_PATH or KEYSTORE_PATH)".takeIf {
+          guardKeystoreFile?.exists() != true
+        },
+        "key alias (set RELEASE_KEY_ALIAS or KEY_ALIAS)".takeIf { guardAlias.isNullOrBlank() },
+        "store password (set RELEASE_KEYSTORE_PASSWORD or STORE_PASSWORD)".takeIf {
+          guardStorePassword.isNullOrBlank()
+        },
+        "key password (set RELEASE_KEY_PASSWORD or KEY_PASSWORD)".takeIf {
+          guardKeyPassword.isNullOrBlank()
+        },
+      )
+      if (missing.isNotEmpty()) {
+        throw GradleException(
+          "Release signing is not configured — refusing to produce an unsigned release APK.\n" +
+            "Missing: ${missing.joinToString("; ")}\n" +
+            "Provide the RELEASE_* environment variables (CI: GitHub Actions secrets) or pass " +
+            "-PRELEASE_KEYSTORE_PATH / -PRELEASE_KEYSTORE_PASSWORD / -PRELEASE_KEY_PASSWORD, then retry. " +
+            "See docs/SECURITY.md for the signing policy.",
+        )
       }
     }
-    // debug: AGP's default debug keystore (~/.android/debug.keystore,
-    // auto-created on first build) — a fresh clone builds with zero setup.
   }
+  tasks.matching {
+    it.name == "assembleRelease" || it.name == "packageRelease" || it.name == "bundleRelease"
+  }.configureEach { dependsOn(verifyReleaseSigning) }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17

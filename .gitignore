@@ -54,10 +54,12 @@ captures/
 .idea/deploymentTargetDropDown.xml
 .idea/render.experimental.xml
 
-# Keystore files (never commit real keys; CI restores the debug keystore from
-# the DEBUG_KEYSTORE_BASE64 repository secret — see README "امضای بیلد و CI"
+# Keystore files (never commit real keys; CI restores the release keystore from
+# the RELEASE_KEYSTORE_BASE64 repository secret — see README "امضای بیلد و CI"
 # and docs/SECURITY.md). The `git ls-files` gate in .github/workflows/build-apk.yml
 # fails the build if any file matching these patterns is ever tracked again.
+# The historical debug key that leaked here is retired: the current release
+# certificate is documented in docs/SECURITY.md.
 *.jks
 *.keystore
 *.base64
