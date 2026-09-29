@@ -161,9 +161,9 @@ cd TermChin
 >
 > دلیل فنی: کلید امضای قدیمی در تاریخچهٔ عمومی مخزن افشا شده بود؛ برای همین کلید جدید `CN=TermChin Release` ساخته شد و بیلدها فقط با آن امضا/کنترل می‌شوند. جزئیات کامل در `docs/SECURITY.md`.
 >
-> ℹ️ توجه: نسخهٔ فعلی این صفحه (v2.5.0) هنوز با همان کلید قدیمی امضا شده و **روی نصب‌های شما نصب می‌شود**؛ این اطلاعیه برای نسخه‌هایی است که با کلید جدید ساخته می‌شوند.
+> ℹ️ توجه: **v2.6.0 اولین نسخهای است که با کلید جدید امضا شده است** و همین نسخهای است که «حذف و نصب مجدد» می‌خواهد؛ نسخه‌های منتشرشدهٔ قبلی (تا v2.5.0) با کلید قدیمی امضا شده‌اند و روی نصب‌های شما نصب می‌شوند.
 >
-> ⚠️ **English:** The TermChin signing key has changed. Any release built with the new key (`CN=TermChin Release`) **cannot be installed as an update** over older installs (`CN=Android Debug`; `INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Back up first (Settings → Export: copy the JSON to a safe place outside the phone — covers courses/groups only, not attachments or settings), uninstall TermChin once, then install the new APK and re-import the JSON via Settings → JSON import. This page's v2.5.0 build itself installs normally over your existing app. Details: `docs/SECURITY.md`.
+> ⚠️ **English:** The TermChin signing key has changed. Any release built with the new key (`CN=TermChin Release`) **cannot be installed as an update** over older installs (`CN=Android Debug`; `INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Back up first (Settings → Export: copy the JSON to a safe place outside the phone — covers courses/groups only, not attachments or settings), uninstall TermChin once, then install the new APK and re-import the JSON via Settings → JSON import. v2.6.0 is the first release signed with the new key; releases up to v2.5.0 were signed with the retired key and still install normally. Details: `docs/SECURITY.md`.
 
 > 📌 **نکته:** برای هر ریلیز، `versionCode` در `app/build.gradle.kts` را یک واحد بالا ببرید.
 
@@ -179,7 +179,7 @@ cd TermChin
 
 ## 📦 دریافت نسخه نهایی (APK)
 
-**نسخه فعلی: v2.5.0** (بیلد `versionCode=15`)
+**نسخه فعلی: v2.6.0** (بیلد `versionCode=16`)
 
 آخرین نسخه اپلیکیشن را از بخش **[Releases](https://github.com/Ara-0x/TermChin/releases)** دریافت و نصب کنید.
 
@@ -198,6 +198,7 @@ cd TermChin
 
 | نسخه | تغییرات کلیدی |
 |---|---|
+| **v2.6.0 (بیلد ۱۶)** | **چرخش کلید امضا** پس از افشای کلید قدیمی در تاریخچهٔ عمومی (اولین نسخه با کلید `CN=TermChin Release`؛ نیازمند حذف و نصب مجدد)؛ **اعتبارسنجی کامل رمز/نام کلید امضا** در گارد `verifyReleaseSigning`؛ **خاموششدن پشتیبانگیری سیستم** (`allowBackup=false`) و حذف قواعد Backup؛ **ایمپورت ایدمپوتنت**: ورود دوبارهٔ JSON/CSV داده تکراری نمیسازد و تیکهای ثبتنام/برنامهساز حفظ میشود؛ **صیقل رابط کاربری**: یکدستسازی شعاع گوشهٔ کارتها روی ۱۶dp، همراستایی برچسب فرمها با توکنهای تایپوگرافی، خواناتر شدن کاشیهای «چرا این برنامه؟»، نمایش «در حال محاسبه» هنگام ساخت برنامه، و رنگهای تمآگاه برای ستارهٔ نشان و دستههای جزوه. |
 | **v2.5.0 (بیلد ۱۵)** | **حذف پاکسازی خودکار استارتاپ** که با نبودِ یک پرچم DataStore می‌توانست کل دیتابیس کاربر را پاک کند (+ تست رگرسیون)؛ **اعمال برنامهٔ ناقص ممنوع**: اگر برای درس انتخاب‌شده‌ای گروهی پیدا نشود، دکمهٔ «اعمال» غیرفعال و اعمال در لایهٔ Repository هم رد می‌شود؛ **یکتایی کد درس/گروه در لایهٔ داده** (نرمال‌سازی trim/حروف) و حذف کدهای ساختگی `CRS-…` و `01` (کد خالی = خطای صریح)؛ **اعتبارسنجی جلسات داخل هر گروه** با معنای زوج/فرد (مشترک بین دیالوگ و Repository)؛ **صادق‌سازی امتیاز**: فیلد `rawScore` + ردیف صریح «محدودسازی»، جمع ردیف‌های توضیح همیشه برابر امتیاز نمایش‌داده‌شده؛ معیارهای «روز حضور/صبح زود» امتیاز اکنون **میانگین هفتگی زوج/فرد**‌اند (نمایش همچنان اتحاد هفته)؛ تفکیک **خطای خواندن فایل ≠ فایل خالی ≠ بدون درس** در ایمپورت؛ حذف کد بلااستفادهٔ WebView پرتال؛ استانداردسازی خطاهای نوشتن دیتابیس؛ بازنویسی README. |
 | **v2.4.0 (بیلد ۱۴)** | نمایش خطاهای دیتابیس/ذخیره‌سازی به‌صورت snackbar سراسری (دیگر خطاها بی‌صدا گم نمی‌شوند)؛ اصلاح رتبه‌بندی برنامه‌ها هنگام تغییر «ترجیح بهینه‌سازی» (جستجوی کامل به‌جای بازچینی فقط ۱۲ برنامهٔ قبلی)؛ رتبه‌بندی قطعی (تست determinism جدید) و رندر سریع‌تر فهرست دروس؛ پاک‌سازی وابستگی‌های بلااستفاده، سلامت keystore/امضا و گیت نسخه در CI. |
 | **v2.3.0 (بیلد ۱۳)** | ارتقای کامل هر ۷ پالت رنگی به نسخه روشن/تاریک اختصاصی با تمامی نقش‌های Material 3 (کارت‌ها، چیپ‌ها، دیالوگ‌ها و کادر خطا هم با تم عوض می‌شوند)؛ دکمه «مشاهده برنامه هفتگی» در کارت امروز اکنون به‌جای رفتن به برنامه‌ساز، به تقویم هفتگی همین صفحه اسکرول می‌کند؛ انتخابگر تم در تنظیمات با کارت‌های گرادیانی و پیش‌نمایش روشن/تاریک؛ تست خودکار کنتراست (WCAG) برای همه تم‌ها. |

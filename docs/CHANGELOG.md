@@ -4,7 +4,7 @@ Notable changes to TermChin (Course Planner), newest first.
 Versions are written as `versionName (versionCode)` exactly as they appear in
 `app/build.gradle.kts` — the single source of truth also checked by CI.
 
-## [unreleased] — 2026-09-29 signing-key migration
+## [2.6.0] — 2026-09-29 signing-key migration, data-integrity fixes & UI polish
 
 ### Security / build
 
@@ -55,6 +55,29 @@ Versions are written as `versionName (versionCode)` exactly as they appear in
   refuses an update over v2.0.0–v2.5.0
   (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`): users must uninstall once and then
   install the new APK. Details and remaining risks: `docs/SECURITY.md`.
+
+### UI / UX polish
+
+- **One card radius app-wide.** Cards, section surfaces and dialogs were using
+  14, 16, 18 and 20 dp interchangeably for the same job. They now all use the
+  16 dp that the majority already used (Settings sections, the Courses search
+  surface, the conflict banner, the FAB). Geometry, spacing and layout are
+  untouched — only the corner radius moved.
+- **Form labels share one size.** The add/edit course and add/edit group dialogs
+  mixed 11 sp and 12 sp field labels; every label now uses the same token
+  (`labelMedium`, 11.5 sp) that the filter chips already used.
+- **Result metrics follow the type scale.** The “why this schedule?” tiles mixed
+  hard-coded 9.5 / 10.5 / 14.5 sp sizes; they now use the typography tokens, so
+  the smallest line is no longer below the app's smallest text size.
+- **The generator no longer looks frozen.** `runScheduleGenerator` reports a
+  busy flag: while it searches, the button is disabled and reads
+  «در حال محاسبهٔ برنامه…», and a second tap cannot queue another run. The flag
+  is cleared on completion, failure and cancellation, so it can never stick.
+- **Dark-mode accents are theme-aware.** The bookmark star and the five
+  document-category colours were hard-coded; they now have light/dark variants
+  (new tokens in `Color.kt`) so they keep their contrast on both surfaces. The
+  “is this palette dark?” rule that the conflict banner used inline moved into a
+  shared `isDarkTheme()` helper and is now used by all three call sites.
 
 ### Privacy
 
