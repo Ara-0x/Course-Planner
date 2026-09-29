@@ -149,6 +149,22 @@ cd TermChin
 ./gradlew testDebugUnitTest
 ```
 
+> ## ⚠️ اطلاعیهٔ مهم — نصب نسخه‌های جدید نیازمند «حذف و نصب مجدد» است
+>
+> کلید امضای TermChin عوض شده است. **نسخه‌ای که با کلید جدید `CN=TermChin Release` ساخته شده، روی نصب‌های قبلی (امضاشده با کلید قدیمی `CN=Android Debug`) نصب *نمی‌شود*** و اندروید خطای «برنامه نصب نشد» (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) می‌دهد. این یک تصمیم امنیتی آگاهانه است: کلید امضای قدیمی در تاریخچهٔ عمومی مخزن افشا شده و بازنشسته شده است.
+>
+> **قبل از نصبِ نسخهٔ جدید، یک‌بار این کارها را انجام دهید:**
+>
+> 1. در اپ قدیمی، به **تنظیمات ← «خروجی دروس و گروه‌ها (Export)»** بروید، متن JSON را **کپی و در جایی امن خارج از گوشی** (مثلاً یک پیام ذخیره‌شده یا فایل متنی) نگه دارید. همچنین برنامهٔ هفتگی‌تان را در **خانه ← «خروجی و اشتراک‌گذاری برنامه»** ذخیره یا با خودتان به اشتراک بگذارید. توجه: این خروجی فقط دروس/گروه‌ها و متن برنامه را پوشش می‌دهد — **فایل‌های جزوات، عکس‌ها و تنظیمات ذخیره نمی‌شوند** و دروسِ واردشده با «پاک کردن دروس قبلی» جایگزین می‌شوند، پس مستندات مهم را جداگانه نگه دارید.
+> 2. اپ **TermChin را کامل حذف (Uninstall) کنید**. حذف اپ، دیتابیس داخلی را پاک می‌کند؛ اگر قدم ۱ را انجام نداده‌اید، درس‌ها و برنامه‌تان از بین می‌رود.
+> 3. نسخهٔ جدید را از همین صفحهٔ Releases دانلود و نصب کنید و خروجی JSON را از **تنظیمات ← «ورود داده با فرمت JSON»** برگردانید.
+>
+> دلیل فنی: کلید امضای قدیمی در تاریخچهٔ عمومی مخزن افشا شده بود؛ برای همین کلید جدید `CN=TermChin Release` ساخته شد و بیلدها فقط با آن امضا/کنترل می‌شوند. جزئیات کامل در `docs/SECURITY.md`.
+>
+> ℹ️ توجه: نسخهٔ فعلی این صفحه (v2.5.0) هنوز با همان کلید قدیمی امضا شده و **روی نصب‌های شما نصب می‌شود**؛ این اطلاعیه برای نسخه‌هایی است که با کلید جدید ساخته می‌شوند.
+>
+> ⚠️ **English:** The TermChin signing key has changed. Any release built with the new key (`CN=TermChin Release`) **cannot be installed as an update** over older installs (`CN=Android Debug`; `INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Back up first (Settings → Export: copy the JSON to a safe place outside the phone — covers courses/groups only, not attachments or settings), uninstall TermChin once, then install the new APK and re-import the JSON via Settings → JSON import. This page's v2.5.0 build itself installs normally over your existing app. Details: `docs/SECURITY.md`.
+
 > 📌 **نکته:** برای هر ریلیز، `versionCode` در `app/build.gradle.kts` را یک واحد بالا ببرید.
 
 ### 🔏 امضای بیلد و CI
