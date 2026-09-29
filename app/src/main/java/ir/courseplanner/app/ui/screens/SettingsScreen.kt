@@ -1409,10 +1409,10 @@ private fun PaletteCard(
     val palette = paletteOf(theme)
     Surface(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .testTag("theme_palette_${theme.id}"),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (selected) palette.light.primaryContainer.copy(alpha = 0.6f)
         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         border = androidx.compose.foundation.BorderStroke(

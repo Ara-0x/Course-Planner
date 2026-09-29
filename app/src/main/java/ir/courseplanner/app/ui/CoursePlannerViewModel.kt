@@ -339,6 +339,14 @@ class CoursePlannerViewModel @Inject constructor(
     private val _isErrorMessage = MutableStateFlow(false)
     val isErrorMessage: StateFlow<Boolean> = _isErrorMessage.asStateFlow()
 
+    /**
+     * True while the schedule generator is searching. The search walks a large
+     * combination space on slower devices, so the screen has to say "working"
+     * (and refuse a second tap) instead of looking frozen.
+     */
+    private val _isGenerating = MutableStateFlow(false)
+    val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
+
     private fun showInfo(message: String) {
         _userMessage.value = message
         _isErrorMessage.value = false
@@ -501,6 +509,10 @@ class CoursePlannerViewModel @Inject constructor(
     }
 
     fun runScheduleGenerator() {
+        // A second tap while a search is already running must not queue another
+        // one; the busy flag is surfaced to the screen so it never looks frozen.
+        if (_isGenerating.value) return
+        _isGenerating.value = true
         viewModelScope.launch {
             val courses = coursesWithSections.value.filter { it.course.isSelectedForGeneration }
             if (courses.isEmpty()) {
@@ -558,7 +570,7 @@ class CoursePlannerViewModel @Inject constructor(
                     truncated = result.truncated
                 )
             }
-        }
+        }.invokeOnCompletion { _isGenerating.value = false }
     }
 
     fun nextCombination() {

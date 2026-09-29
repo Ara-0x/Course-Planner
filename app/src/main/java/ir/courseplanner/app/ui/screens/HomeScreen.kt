@@ -138,8 +138,8 @@ fun HomeScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(4.dp, RoundedCornerShape(20.dp)),
-            shape = RoundedCornerShape(20.dp),
+                .shadow(4.dp, RoundedCornerShape(16.dp)),
+            shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface
         ) {
             Box(
@@ -156,7 +156,7 @@ fun HomeScreen(
                     .border(
                         1.dp,
                         MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                        RoundedCornerShape(20.dp)
+                        RoundedCornerShape(16.dp)
                     )
                     .padding(18.dp)
             ) {
@@ -189,7 +189,7 @@ fun HomeScreen(
 
                         // Offline Pill Badge
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                             border = androidx.compose.foundation.BorderStroke(
                                 1.dp,
@@ -385,7 +385,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .height(48.dp)
                     .testTag("home_select_courses_button"),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
@@ -403,7 +403,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .height(48.dp)
                     .testTag("home_auto_schedule_button"),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 border = androidx.compose.foundation.BorderStroke(
                     1.2.dp,
                     MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
@@ -566,7 +566,7 @@ fun HomeScreen(
             // Share & Copy Timetable Action Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp,
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
@@ -768,7 +768,7 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .bringIntoViewRequester(weeklyTimetableRequester)
                 .testTag("home_weekly_timetable_section")
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(
                     MaterialTheme.colorScheme.primary.copy(alpha = 0.08f * timetableGlow.value)
                 )
@@ -777,7 +777,7 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.primary.copy(
                         alpha = 0.15f + 0.75f * timetableGlow.value
                     ),
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(16.dp)
                 )
         ) {
             WeeklyTimetable(
@@ -809,7 +809,7 @@ private fun TodayNextCard(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 1.dp,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))

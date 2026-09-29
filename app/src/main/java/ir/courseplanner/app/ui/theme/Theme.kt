@@ -8,6 +8,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.luminance
 import ir.courseplanner.app.data.preferences.AppColorTheme
 
 /**
@@ -40,3 +41,12 @@ fun MyApplicationTheme(
         content = content
     )
 }
+
+/**
+ * True when the ACTIVE palette is a dark one. Uses the rendered background
+ * rather than `isSystemInDarkTheme()` so the app's own theme choice is
+ * respected (a user can pick dark while the device stays light, and vice versa).
+ */
+@Composable
+fun isDarkTheme(): Boolean =
+    MaterialTheme.colorScheme.background.luminance() < 0.5f

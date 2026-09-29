@@ -97,6 +97,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ir.courseplanner.app.ui.theme.BookmarkAmberDark
+import ir.courseplanner.app.ui.theme.BookmarkAmberLight
+import ir.courseplanner.app.ui.theme.CategoryGreenDark
+import ir.courseplanner.app.ui.theme.CategoryGreenLight
+import ir.courseplanner.app.ui.theme.CategoryOrangeDark
+import ir.courseplanner.app.ui.theme.CategoryOrangeLight
+import ir.courseplanner.app.ui.theme.CategoryPinkDark
+import ir.courseplanner.app.ui.theme.CategoryPinkLight
+import ir.courseplanner.app.ui.theme.CategoryPurpleDark
+import ir.courseplanner.app.ui.theme.CategoryPurpleLight
+import ir.courseplanner.app.ui.theme.CategoryTealDark
+import ir.courseplanner.app.ui.theme.CategoryTealLight
+import ir.courseplanner.app.ui.theme.isDarkTheme
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ir.courseplanner.app.data.model.Course
@@ -208,7 +221,7 @@ fun DocumentsScreen(
                                 Icon(
                                     imageVector = if (onlyBookmarked) Icons.Filled.Star else Icons.Outlined.StarBorder,
                                     contentDescription = null,
-                                    tint = if (onlyBookmarked) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = if (onlyBookmarked) (if (isDarkTheme()) BookmarkAmberDark else BookmarkAmberLight) else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(16.dp)
                                 )
                             },
@@ -489,13 +502,13 @@ private fun DocumentItemCard(
     var expandedNotes by remember { mutableStateOf(false) }
 
     // Same card language as the Courses screen (Surface + soft shadow +
-    // hairline border + 18dp corners) so all tabs look like one app.
+    // hairline border + 16dp corners, the card radius used app-wide) so all tabs look like one app.
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(1.5.dp, RoundedCornerShape(18.dp))
+            .shadow(1.5.dp, RoundedCornerShape(16.dp))
             .testTag("doc_card_${doc.id}"),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {
@@ -559,7 +572,7 @@ private fun DocumentItemCard(
                     Icon(
                         imageVector = if (doc.isBookmarked) Icons.Filled.Star else Icons.Outlined.StarBorder,
                         contentDescription = "نشان کردن",
-                        tint = if (doc.isBookmarked) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        tint = if (doc.isBookmarked) (if (isDarkTheme()) BookmarkAmberDark else BookmarkAmberLight) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
             }
@@ -842,7 +855,7 @@ private fun AddEditDocumentDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(
@@ -1175,14 +1188,28 @@ private fun NoDocumentsEmptyState(onAddFirst: () -> Unit) {
 
 @Composable
 private fun getCategoryColors(category: DocumentCategory): Pair<Color, Color> {
-    return when (category) {
-        DocumentCategory.PAMPHLET -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) to MaterialTheme.colorScheme.primary
-        DocumentCategory.SUMMARY -> Color(0xFF2E7D32).copy(alpha = 0.15f) to Color(0xFF2E7D32)
-        DocumentCategory.EXAM_SAMPLE -> Color(0xFF6A1B9A).copy(alpha = 0.15f) to Color(0xFF6A1B9A)
-        DocumentCategory.ASSIGNMENT -> Color(0xFFE65100).copy(alpha = 0.15f) to Color(0xFFE65100)
-        DocumentCategory.SLIDES -> Color(0xFF00838F).copy(alpha = 0.15f) to Color(0xFF00838F)
-        DocumentCategory.NOTE -> Color(0xFFC2185B).copy(alpha = 0.15f) to Color(0xFFC2185B)
+    // Category accents follow the active palette: the light variants stay
+    // readable on a white card, the dark variants on a dark surface.
+    val accent = if (isDarkTheme()) {
+        when (category) {
+            DocumentCategory.PAMPHLET -> MaterialTheme.colorScheme.primary
+            DocumentCategory.SUMMARY -> CategoryGreenDark
+            DocumentCategory.EXAM_SAMPLE -> CategoryPurpleDark
+            DocumentCategory.ASSIGNMENT -> CategoryOrangeDark
+            DocumentCategory.SLIDES -> CategoryTealDark
+            DocumentCategory.NOTE -> CategoryPinkDark
+        }
+    } else {
+        when (category) {
+            DocumentCategory.PAMPHLET -> MaterialTheme.colorScheme.primary
+            DocumentCategory.SUMMARY -> CategoryGreenLight
+            DocumentCategory.EXAM_SAMPLE -> CategoryPurpleLight
+            DocumentCategory.ASSIGNMENT -> CategoryOrangeLight
+            DocumentCategory.SLIDES -> CategoryTealLight
+            DocumentCategory.NOTE -> CategoryPinkLight
+        }
     }
+    return accent.copy(alpha = 0.15f) to accent
 }
 
 private fun formatTimestamp(timestamp: Long): String {

@@ -159,7 +159,7 @@ fun AddCourseDialog(
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it; errorMessage = null },
-                        label = { Text("نام درس *", fontSize = 12.sp) },
+                        label = { Text("نام درس *", fontSize = 11.5.sp) },
                         placeholder = { Text("مثال: معماری کامپیوتر") },
                         modifier = Modifier
                             .weight(1.5f)
@@ -171,7 +171,7 @@ fun AddCourseDialog(
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
-                        label = { Text("کد درس", fontSize = 12.sp) },
+                        label = { Text("کد درس", fontSize = 11.5.sp) },
                         placeholder = { Text("CE205") },
                         modifier = Modifier
                             .weight(1f)
@@ -190,7 +190,7 @@ fun AddCourseDialog(
                     OutlinedTextField(
                         value = department,
                         onValueChange = { department = it },
-                        label = { Text("دانشکده", fontSize = 12.sp) },
+                        label = { Text("دانشکده", fontSize = 11.5.sp) },
                         placeholder = { Text("مهندسی کامپیوتر") },
                         modifier = Modifier.weight(1.4f),
                         singleLine = true,
@@ -238,7 +238,7 @@ fun AddCourseDialog(
                     OutlinedTextField(
                         value = sectionCode,
                         onValueChange = { sectionCode = it },
-                        label = { Text("شماره گروه", fontSize = 12.sp) },
+                        label = { Text("شماره گروه", fontSize = 11.5.sp) },
                         placeholder = { Text("01") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
@@ -248,7 +248,7 @@ fun AddCourseDialog(
                     OutlinedTextField(
                         value = instructor,
                         onValueChange = { instructor = it },
-                        label = { Text("نام استاد", fontSize = 12.sp) },
+                        label = { Text("نام استاد", fontSize = 11.5.sp) },
                         placeholder = { Text("دکتر صبوری") },
                         modifier = Modifier.weight(1.5f),
                         singleLine = true,
@@ -264,7 +264,7 @@ fun AddCourseDialog(
                     OutlinedTextField(
                         value = examDate,
                         onValueChange = { examDate = it },
-                        label = { Text("تاریخ امتحان", fontSize = 12.sp) },
+                        label = { Text("تاریخ امتحان", fontSize = 11.5.sp) },
                         placeholder = { Text("1403/10/28") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
@@ -274,7 +274,7 @@ fun AddCourseDialog(
                     OutlinedTextField(
                         value = examTimeRange,
                         onValueChange = { examTimeRange = it },
-                        label = { Text("ساعت امتحان", fontSize = 12.sp) },
+                        label = { Text("ساعت امتحان", fontSize = 11.5.sp) },
                         placeholder = { Text("09:00 - 12:00") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
@@ -485,7 +485,7 @@ private fun SessionCardInput(
                     value = daysList.getOrElse(sessionInput.dayOfWeek) { "شنبه" },
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("روز هفته", fontSize = 11.sp) },
+                    label = { Text("روز هفته", fontSize = 11.5.sp) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dayExpanded) },
                     modifier = Modifier
                         .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
@@ -517,7 +517,7 @@ private fun SessionCardInput(
                 OutlinedTextField(
                     value = sessionInput.startTime,
                     onValueChange = { onUpdate(sessionInput.copy(startTime = it)) },
-                    label = { Text("شروع (HH:mm)", fontSize = 11.sp) },
+                    label = { Text("شروع (HH:mm)", fontSize = 11.5.sp) },
                     placeholder = { Text("08:00") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
@@ -527,7 +527,7 @@ private fun SessionCardInput(
                 OutlinedTextField(
                     value = sessionInput.endTime,
                     onValueChange = { onUpdate(sessionInput.copy(endTime = it)) },
-                    label = { Text("پایان (HH:mm)", fontSize = 11.sp) },
+                    label = { Text("پایان (HH:mm)", fontSize = 11.5.sp) },
                     placeholder = { Text("10:00") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
@@ -539,7 +539,7 @@ private fun SessionCardInput(
             OutlinedTextField(
                 value = sessionInput.location,
                 onValueChange = { onUpdate(sessionInput.copy(location = it)) },
-                label = { Text("محل یا شماره کلاس (اختیاری)", fontSize = 11.sp) },
+                label = { Text("محل یا شماره کلاس (اختیاری)", fontSize = 11.5.sp) },
                 placeholder = { Text("مثال: تالار خوارزمی یا آزمایشگاه") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,

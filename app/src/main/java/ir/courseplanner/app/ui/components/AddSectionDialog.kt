@@ -156,7 +156,7 @@ fun AddSectionDialog(
                     OutlinedTextField(
                         value = sectionCode,
                         onValueChange = { sectionCode = it },
-                        label = { Text("شماره گروه", fontSize = 12.sp) },
+                        label = { Text("شماره گروه", fontSize = 11.5.sp) },
                         placeholder = { Text("02") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
@@ -166,7 +166,7 @@ fun AddSectionDialog(
                     OutlinedTextField(
                         value = instructor,
                         onValueChange = { instructor = it },
-                        label = { Text("نام استاد", fontSize = 12.sp) },
+                        label = { Text("نام استاد", fontSize = 11.5.sp) },
                         placeholder = { Text("دکتر ...") },
                         modifier = Modifier.weight(1.5f),
                         singleLine = true,
@@ -181,7 +181,7 @@ fun AddSectionDialog(
                     OutlinedTextField(
                         value = examDate,
                         onValueChange = { examDate = it },
-                        label = { Text("تاریخ امتحان", fontSize = 12.sp) },
+                        label = { Text("تاریخ امتحان", fontSize = 11.5.sp) },
                         placeholder = { Text("1403/10/28") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
@@ -191,7 +191,7 @@ fun AddSectionDialog(
                     OutlinedTextField(
                         value = examTimeRange,
                         onValueChange = { examTimeRange = it },
-                        label = { Text("ساعت امتحان", fontSize = 12.sp) },
+                        label = { Text("ساعت امتحان", fontSize = 11.5.sp) },
                         placeholder = { Text("09:00 - 12:00") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
@@ -251,7 +251,7 @@ fun AddSectionDialog(
                                     value = daysList.getOrElse(sessionInput.dayOfWeek) { "شنبه" },
                                     onValueChange = {},
                                     readOnly = true,
-                                    label = { Text("روز هفته", fontSize = 11.sp) },
+                                    label = { Text("روز هفته", fontSize = 11.5.sp) },
                                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dayExpanded) },
                                      modifier = Modifier
                                          .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
@@ -282,7 +282,7 @@ fun AddSectionDialog(
                                 OutlinedTextField(
                                     value = sessionInput.startTime,
                                     onValueChange = { sessions[index] = sessionInput.copy(startTime = it) },
-                                    label = { Text("شروع (HH:mm)", fontSize = 11.sp) },
+                                    label = { Text("شروع (HH:mm)", fontSize = 11.5.sp) },
                                     modifier = Modifier.weight(1f),
                                     singleLine = true,
                                     shape = RoundedCornerShape(8.dp)
@@ -291,7 +291,7 @@ fun AddSectionDialog(
                                 OutlinedTextField(
                                     value = sessionInput.endTime,
                                     onValueChange = { sessions[index] = sessionInput.copy(endTime = it) },
-                                    label = { Text("پایان (HH:mm)", fontSize = 11.sp) },
+                                    label = { Text("پایان (HH:mm)", fontSize = 11.5.sp) },
                                     modifier = Modifier.weight(1f),
                                     singleLine = true,
                                     shape = RoundedCornerShape(8.dp)
@@ -301,7 +301,7 @@ fun AddSectionDialog(
                             OutlinedTextField(
                                 value = sessionInput.location,
                                 onValueChange = { sessions[index] = sessionInput.copy(location = it) },
-                                label = { Text("محل کلاس", fontSize = 11.sp) },
+                                label = { Text("محل کلاس", fontSize = 11.5.sp) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 shape = RoundedCornerShape(8.dp)

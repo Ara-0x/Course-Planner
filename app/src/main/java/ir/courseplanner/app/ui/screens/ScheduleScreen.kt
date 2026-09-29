@@ -56,7 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
+
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,6 +67,9 @@ import ir.courseplanner.app.engine.OptimizationPreference
 import ir.courseplanner.app.ui.AppDestination
 import ir.courseplanner.app.ui.CoursePlannerViewModel
 import ir.courseplanner.app.ui.components.WeeklyTimetable
+import ir.courseplanner.app.ui.theme.BookmarkAmberDark
+import ir.courseplanner.app.ui.theme.BookmarkAmberLight
+import ir.courseplanner.app.ui.theme.isDarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +78,8 @@ fun ScheduleScreen(
     modifier: Modifier = Modifier
 ) {
     val generationState by viewModel.generationState.collectAsStateWithLifecycle()
+    val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
+    val isDark = isDarkTheme()
     val optimizationPref by viewModel.optimizationPreference.collectAsStateWithLifecycle()
     val coursesWithSections by viewModel.coursesWithSections.collectAsStateWithLifecycle()
     val preferences by viewModel.userPreferences.collectAsStateWithLifecycle()
@@ -91,7 +96,7 @@ fun ScheduleScreen(
     ) {
         // Header
         Surface(
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
             modifier = Modifier.fillMaxWidth()
@@ -282,6 +287,10 @@ fun ScheduleScreen(
 
                     Button(
                         onClick = { viewModel.runScheduleGenerator() },
+                        // Disabled while searching: the previous result stays on
+                        // screen and the label says what is happening, so the
+                        // screen neither looks frozen nor accepts a second run.
+                        enabled = !isGenerating,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(46.dp)
@@ -290,7 +299,11 @@ fun ScheduleScreen(
                     ) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("ساخت و رتبه‌بندی برنامه‌های بهینه", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isGenerating) "در حال محاسبهٔ برنامه…" else "ساخت و رتبه‌بندی برنامه‌های بهینه",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -305,7 +318,7 @@ fun ScheduleScreen(
                 // No conflict-free schedules found
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
                 ) {
@@ -338,8 +351,8 @@ fun ScheduleScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .shadow(2.dp, RoundedCornerShape(18.dp)),
-                    shape = RoundedCornerShape(18.dp),
+                        .shadow(2.dp, RoundedCornerShape(16.dp)),
+                    shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surface,
                     border = androidx.compose.foundation.BorderStroke(
                         if (isBest) 2.dp else 1.dp,
@@ -363,7 +376,7 @@ fun ScheduleScreen(
                                         Icon(
                                             Icons.Default.Star,
                                             contentDescription = null,
-                                            tint = Color(0xFFFFB300),
+                                            tint = if (isDark) BookmarkAmberDark else BookmarkAmberLight,
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -397,7 +410,11 @@ fun ScheduleScreen(
                                         softWrap = false
                                     )
                                     TextButton(onClick = { showBreakdown = true }) {
-                                        Text("چرا این برنامه؟", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "چرا این برنامه؟",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
                             }
@@ -676,7 +693,7 @@ private fun MetricBox(
             ) {
                 Text(
                     text = title,
-                    fontSize = 10.5.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -689,7 +706,7 @@ private fun MetricBox(
             }
             Text(
                 text = value,
-                fontSize = 14.5.sp,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
@@ -698,7 +715,7 @@ private fun MetricBox(
             )
             Text(
                 text = subtitle,
-                fontSize = 9.5.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

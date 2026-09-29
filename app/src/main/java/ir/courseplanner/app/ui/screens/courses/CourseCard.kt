@@ -124,9 +124,9 @@ internal fun CourseCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(1.5.dp, RoundedCornerShape(18.dp))
+            .shadow(1.5.dp, RoundedCornerShape(16.dp))
             .testTag("course_card_${course.code}"),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {

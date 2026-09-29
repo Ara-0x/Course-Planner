@@ -121,7 +121,7 @@ fun EditCourseDialog(
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it; errorMessage = null },
-                        label = { Text("نام درس *", fontSize = 12.sp) },
+                        label = { Text("نام درس *", fontSize = 11.5.sp) },
                         modifier = Modifier
                             .weight(1.5f)
                             .testTag("input_edit_course_name"),
@@ -132,7 +132,7 @@ fun EditCourseDialog(
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it; errorMessage = null },
-                        label = { Text("کد درس", fontSize = 12.sp) },
+                        label = { Text("کد درس", fontSize = 11.5.sp) },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("input_edit_course_code"),
@@ -150,7 +150,7 @@ fun EditCourseDialog(
                     OutlinedTextField(
                         value = department,
                         onValueChange = { department = it },
-                        label = { Text("دانشکده", fontSize = 12.sp) },
+                        label = { Text("دانشکده", fontSize = 11.5.sp) },
                         modifier = Modifier.weight(1.4f),
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp)

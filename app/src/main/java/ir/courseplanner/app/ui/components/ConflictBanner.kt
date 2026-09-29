@@ -39,7 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.luminance
+
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,6 +53,7 @@ import ir.courseplanner.app.ui.theme.SuccessGreenBgDark
 import ir.courseplanner.app.ui.theme.SuccessGreenBgLight
 import ir.courseplanner.app.ui.theme.SuccessGreenDark
 import ir.courseplanner.app.ui.theme.SuccessGreenLight
+import ir.courseplanner.app.ui.theme.isDarkTheme
 
 @Composable
 fun ConflictBanner(
@@ -61,7 +62,7 @@ fun ConflictBanner(
     modifier: Modifier = Modifier
 ) {
     // Respect the app's explicit light/dark preference, not only the device setting.
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val isDark = isDarkTheme()
     var isExpanded by remember { mutableStateOf(false) }
 
     if (!hasEnrolledCourses) {
