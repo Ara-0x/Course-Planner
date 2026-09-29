@@ -1,4 +1,6 @@
+import java.security.KeyStore
 import java.time.Instant
+import java.util.Collections
 
 plugins {
   alias(libs.plugins.android.application)
@@ -36,32 +38,37 @@ android {
   }
 
   // Release signing: the private keystore lives OUTSIDE this repository and is
-  // never committed. Non-secret values (keystore path, alias) come from
-  // gradle.properties or the environment; passwords come ONLY from the
-  // environment (RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_PASSWORD, or the
-  // legacy STORE_PASSWORD / KEY_PASSWORD) or -P flags.
+  // never committed. The interface is deterministic — exactly four environment
+  // variables and nothing else:
+  //
+  //   RELEASE_KEYSTORE_PATH      path to the release keystore
+  //   RELEASE_KEY_ALIAS          key alias inside that keystore
+  //   RELEASE_KEYSTORE_PASSWORD  keystore password
+  //   RELEASE_KEY_PASSWORD       key password
+  //
+  // There are NO fallbacks: not the legacy STORE_PASSWORD / KEY_PASSWORD, not
+  // -P overrides, not gradle.properties values, and never the debug keystore.
+  // A release build missing any of the four fails loudly in `verifyReleaseSigning`
+  // below instead of falling back to a debug-signed or unsigned artifact.
   //
   // The distribution key was ROTATED in 2026-09 after the historical debug key
   // leaked into public git history; the old certificate must not sign anything
   // again. See docs/SECURITY.md for the current fingerprint and the policy.
   signingConfigs {
     create("release") {
-      storeFile = rootProject.file(
-        System.getenv("RELEASE_KEYSTORE_PATH")
-          ?: (findProperty("RELEASE_KEYSTORE_PATH") as String?)
-          ?: (findProperty("KEYSTORE_PATH") as String?)
-          ?: "termchin-release.jks",
-      )
-      keyAlias = System.getenv("RELEASE_KEY_ALIAS")
-        ?: (findProperty("RELEASE_KEY_ALIAS") as String?)
-        ?: (findProperty("KEY_ALIAS") as String?)
-        ?: "termchin-release"
-      storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
-        ?: System.getenv("STORE_PASSWORD")
-        ?: (findProperty("STORE_PASSWORD") as String?)
-      keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
-        ?: System.getenv("KEY_PASSWORD")
-        ?: (findProperty("KEY_PASSWORD") as String?)
+      // An unset path must not resolve to a plausible file: point it somewhere
+      // that can never exist so the guard reports a missing keystore rather
+      // than attempting to sign with whatever happens to be in the project root.
+      val keystorePath = System.getenv("RELEASE_KEYSTORE_PATH")?.trim().orEmpty()
+      storeFile =
+        if (keystorePath.isEmpty()) {
+          rootProject.file("build/absent-release-keystore.jks")
+        } else {
+          rootProject.file(keystorePath)
+        }
+      keyAlias = System.getenv("RELEASE_KEY_ALIAS")?.trim()
+      storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")?.trim()
+      keyPassword = System.getenv("RELEASE_KEY_PASSWORD")?.trim()
     }
   }
 
@@ -89,19 +96,43 @@ android {
   val guardAlias: String? = signingConfigs.getByName("release").keyAlias
   val guardStorePassword: String? = signingConfigs.getByName("release").storePassword
   val guardKeyPassword: String? = signingConfigs.getByName("release").keyPassword
+
+  // The container may be JKS or PKCS12; pick the engine from the file extension
+  // and fall back to the other one so either format works with no extra config.
+  fun openReleaseKeyStore(file: File, password: CharArray): KeyStore {
+    val preferred =
+      when (file.extension.lowercase()) {
+        "jks", "keystore" -> "JKS"
+        "p12", "pfx", "pkcs12" -> "PKCS12"
+        else -> KeyStore.getDefaultType()
+      }
+    var firstFailure: Exception? = null
+    for (type in listOf(preferred, "JKS", "PKCS12").distinct()) {
+      try {
+        val keyStore = KeyStore.getInstance(type)
+        file.inputStream().use { stream -> keyStore.load(stream, password) }
+        return keyStore
+      } catch (e: Exception) {
+        if (firstFailure == null) firstFailure = e
+      }
+    }
+    throw firstFailure ?: IllegalStateException("keystore ${file.name} could not be read")
+  }
+
   val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
     group = "verification"
-    description = "Fails when the release signing keystore or its passwords are missing."
+    description =
+      "Fails when the release keystore is missing, unreadable, or has the wrong alias/passwords."
     doLast {
       val missing = listOfNotNull(
-        "keystore file $guardKeystoreFile (set RELEASE_KEYSTORE_PATH or KEYSTORE_PATH)".takeIf {
+        "keystore file $guardKeystoreFile (set RELEASE_KEYSTORE_PATH)".takeIf {
           guardKeystoreFile?.exists() != true
         },
-        "key alias (set RELEASE_KEY_ALIAS or KEY_ALIAS)".takeIf { guardAlias.isNullOrBlank() },
-        "store password (set RELEASE_KEYSTORE_PASSWORD or STORE_PASSWORD)".takeIf {
+        "key alias (set RELEASE_KEY_ALIAS)".takeIf { guardAlias.isNullOrBlank() },
+        "store password (set RELEASE_KEYSTORE_PASSWORD)".takeIf {
           guardStorePassword.isNullOrBlank()
         },
-        "key password (set RELEASE_KEY_PASSWORD or KEY_PASSWORD)".takeIf {
+        "key password (set RELEASE_KEY_PASSWORD)".takeIf {
           guardKeyPassword.isNullOrBlank()
         },
       )
@@ -109,11 +140,57 @@ android {
         throw GradleException(
           "Release signing is not configured — refusing to produce an unsigned release APK.\n" +
             "Missing: ${missing.joinToString("; ")}\n" +
-            "Provide the RELEASE_* environment variables (CI: GitHub Actions secrets) or pass " +
-            "-PRELEASE_KEYSTORE_PATH / -PRELEASE_KEYSTORE_PASSWORD / -PRELEASE_KEY_PASSWORD, then retry. " +
+            "Set exactly these four environment variables (CI: GitHub Actions secrets): " +
+            "RELEASE_KEYSTORE_PATH, RELEASE_KEY_ALIAS, RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_PASSWORD. " +
+            "There are no fallbacks (-P and legacy STORE_PASSWORD/KEY_PASSWORD are ignored). " +
             "See docs/SECURITY.md for the signing policy.",
         )
       }
+
+      // All four variables are present, so the remaining misconfiguration modes
+      // are wrong VALUES: a wrong store password, a wrong alias, or a wrong key
+      // password. Catching them here means a broken CI secret fails in seconds
+      // with a fixable message instead of silently degrading the artifact.
+      val alias = guardAlias ?: return@doLast
+      val keystoreFile = guardKeystoreFile ?: return@doLast
+      val keyStore =
+        try {
+          openReleaseKeyStore(keystoreFile, guardStorePassword!!.toCharArray())
+        } catch (e: Exception) {
+          throw GradleException(
+            "Release signing is misconfigured — refusing to produce a release APK.\n" +
+              "Could not open keystore ${keystoreFile.absolutePath} " +
+              "(${e::class.java.simpleName}: ${e.message}).\n" +
+              "Usually RELEASE_KEYSTORE_PASSWORD is wrong, or the file is not a real keystore " +
+              "(e.g. a truncated base64 decode). " +
+              "See docs/SECURITY.md for the signing policy.",
+          )
+        }
+      if (!keyStore.isKeyEntry(alias)) {
+        val available =
+          Collections.list(keyStore.aliases()).sorted().joinToString(", ").ifEmpty { "<none>" }
+        throw GradleException(
+          "Release signing is misconfigured — refusing to produce a release APK.\n" +
+            "RELEASE_KEY_ALIAS \"$alias\" is not a private-key entry in " +
+            "${keystoreFile.absolutePath}.\n" +
+            "Aliases present in that keystore: $available. " +
+            "See docs/SECURITY.md for the signing policy.",
+        )
+      }
+      try {
+        keyStore.getKey(alias, guardKeyPassword!!.toCharArray())
+      } catch (e: Exception) {
+        throw GradleException(
+          "Release signing is misconfigured — refusing to produce a release APK.\n" +
+            "RELEASE_KEY_PASSWORD does not unlock alias \"$alias\" in " +
+            "${keystoreFile.name} (${e::class.java.simpleName}). " +
+            "See docs/SECURITY.md for the signing policy.",
+        )
+      }
+      logger.lifecycle(
+        "Release signing verified: alias \"$alias\" in ${keystoreFile.name} is readable " +
+          "and the key password is correct.",
+      )
     }
   }
   tasks.matching {

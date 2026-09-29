@@ -20,11 +20,34 @@ Versions are written as `versionName (versionCode)` exactly as they appear in
   `verifyReleaseSigning` task, which fails the build with an explicit message
   when the keystore or a password is missing: a release is never unsigned and
   never debug-signed. Debug builds keep AGP's local debug keystore.
+- **The signing guard validates values, not just their presence.**
+  `verifyReleaseSigning` now opens the keystore with
+  `RELEASE_KEYSTORE_PASSWORD`, requires `RELEASE_KEY_ALIAS` to be a private-key
+  entry in it, and requires `RELEASE_KEY_PASSWORD` to decrypt that entry. A
+  typo'd or rotated secret therefore fails in seconds, naming the broken value,
+  instead of failing later during packaging (or worse, producing an artifact
+  nobody expected). All four failure modes were exercised: no variables, wrong
+  alias, wrong keystore password, wrong key password.
 - **CI builds the release variant.** `.github/workflows/build-apk.yml` restores
   `RELEASE_KEYSTORE_BASE64` into `$RUNNER_TEMP` (outside the workspace), removes
   it after the job, aborts when any signing secret is missing, assembles
   `assembleRelease`, and its signature gate now pins the NEW fingerprint — a
   debug-signed or otherwise wrong APK fails the run.
+- **Stricter CI gates and least privilege.** The workflow requests `contents:
+  read` by default and grants `contents: write` only to a separate `release`
+  job that runs on `v*` tags and depends on the build job, so a build from a
+  branch can never publish a release. A signing pre-flight step runs
+  `verifyReleaseSigning` before the test/build steps, the signature gate also
+  asserts that the retired fingerprint never appears, and a new **Offline &
+  backup gate** inspects the built APK for `android.permission.INTERNET` and
+  `android:allowBackup=false`. Both assets (plain and cache-busting name) travel
+  to the publish job in one artifact, which is what the release job asserts.
+- **Signing interface is deterministic.** Release signing reads exactly the four
+  `RELEASE_*` environment variables: the legacy `STORE_PASSWORD` /
+  `KEY_PASSWORD` names, the non-secret `gradle.properties` values
+  (`KEYSTORE_PATH` / `KEY_ALIAS`) and every `-P` fallback are gone, and an unset
+  keystore path resolves to a non-existent placeholder instead of a plausible
+  file in the project root.
 - **History cleanup.** The compromised blob is removed from every reachable
   branch and tag with `git filter-repo` plus a force-push, so the old commit is
   no longer reachable from repository refs.
@@ -32,6 +55,25 @@ Versions are written as `versionName (versionCode)` exactly as they appear in
   refuses an update over v2.0.0–v2.5.0
   (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`): users must uninstall once and then
   install the new APK. Details and remaining risks: `docs/SECURITY.md`.
+
+### Privacy
+
+- **OS backup and device-to-device transfer are disabled.**
+  `android:allowBackup="false"`, and the `dataExtractionRules` /
+  `fullBackupContent` attributes are removed together with
+  `res/xml/backup_rules.xml` and `res/xml/data_extraction_rules.xml`, so Android
+  can no longer copy the database or preferences to a cloud account or another
+  device. The app's own JSON export remains the only backup path. Documented in
+  `README.md` and `docs/SECURITY.md`, and enforced by the CI gate above.
+
+### Fixed (data integrity)
+
+- **Importing a backup twice no longer duplicates data.** JSON/CSV restore wrote
+  rows with `insertAll`; it now writes through `syncCourse`, so a course that
+  already exists (matched through `normalizeCode`) is updated in place, section
+  codes are matched the same way, and enrollment / generator ticks are
+  preserved. `RepositoryImportTest` covers re-import, normalized matching and
+  tick preservation — all three fail on the previous implementation.
 
 ## [2.5.0] — 2026-09-28 integrity pass
 
@@ -110,12 +152,12 @@ Versions are written as `versionName (versionCode)` exactly as they appear in
 ### Security / repository hygiene
 
 - Verified (fingerprint compared offline, nothing printed): the distribution
-  keystore blob was committed in `e0eb70e` and deleted in `7b2b5a1`, but it is
-  still in the **public** repository's history and it is the very key that signs
-  releases (`fcced2ea…`). Findings, impact and the two remediation options are
-  documented in `docs/SECURITY.md`; a new CI **secret-hygiene gate** fails any
-  build that tracks a keystore-like file again. History rewrite / key rotation
-  are left as explicit maintainer decisions (both have user-visible cost).
+  keystore blob was committed in `e0eb70e` and deleted in `7b2b5a1`, but **at
+  that time** it was still in the **public** repository's history and it was the
+  very key that signed releases (`fcced2ea…`). Findings and impact are
+  documented in `docs/SECURITY.md`; a CI **secret-hygiene gate** fails any
+  build that tracks a keystore-like file again. Both remediation options have
+  since been carried out — see the `[unreleased]` section at the top.
 - README rewritten for accuracy: TermChin repo/URLs, honest offline wording
   (no `INTERNET` permission at all), Top-K + `maxLeaves` truncation instead of
   "all combinations", the 4-step HTML-file import workflow (no automatic portal

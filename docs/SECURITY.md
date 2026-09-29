@@ -1,89 +1,126 @@
-# Security Notes — TermChin
+# Security Policy — TermChin
 
-> Status: 2026-09-29 · Applies to repository `Ara-0x/TermChin` (public).
+> Applies to repository `Ara-0x/TermChin` and to APKs distributed through its
+> GitHub Releases page.
 
-## 1. Signing-key migration (2026-09-29)
+## Supported Versions
 
-The historical distribution key was **compromised** — it was committed to this
-public repository — and is now **retired**. TermChin has a new release-signing
-identity.
+| Version | Supported |
+|---|---|
+| 2.5.x (current release key) | ✅ |
+| 2.0.0 – 2.5.0 (released with the retired key) | ⚠️ installable, but must be replaced — see [Migration impact](#migration-impact) |
+| older | ❌ |
 
-### Old certificate (RETIRED) vs. current certificate
+Only APKs downloaded from this repository's official Releases page are
+supported. Builds from forks or third-party mirrors are not.
 
-| Item | Old key — do not trust | Current release key |
-|---|---|---|
-| SHA-256 (public fingerprint) | `fcced2ea0574ba6c7b9536c44846c2b697e1f841507af9e4ed00ed910bbe10ff` | `0d38aa655105b0af6a0c0a1d26b37dbb872d20b6b4ab63fbeb9f88aa195adda0` |
-| Owner / alias | `CN=Android Debug, O=Android, C=US` (`androiddebugkey`) | `CN=TermChin Release, O=TermChin, C=IR` (`termchin-release`) |
-| Key | RSA 2048 (debug key) | RSA 4096, created 2026-09-29, valid until 2056 |
-| Impact of leak | Anybody with it can forge an APK that Android accepts as an update over the releases it signed. | Signs every official APK from now on. |
+## Reporting a Vulnerability
 
-### What happened
+Please **do not** open a public issue for a security problem.
 
-`debug.keystore.base64` — the old private key, base64-encoded — was committed in
-`e0eb70e` and deleted in `7b2b5a1`. The file is untracked today, but the blob
-stayed reachable from public history, and releases v2.0.0–v2.5.0 were signed with
-exactly that certificate, so a forged APK could be installed as an update.
+- Use GitHub's private vulnerability reporting for this repository
+  (Security → Report a vulnerability), or
+- contact the maintainer directly.
 
-### What this migration changed
+Include: affected version, steps to reproduce, impact, and any suggested fix.
+You should receive an acknowledgement within a few days. Once a fix is
+released, the report can be discussed publicly.
 
-1. **New release key** generated on the maintainer's machine, outside the Git
-   working tree. The old key must never sign anything again.
-2. **Release builds always use the release key.** `assembleRelease` depends on
-   the `verifyReleaseSigning` task, which fails the build with an explicit error
-   when the keystore or a password is missing. There is deliberately no fallback
-   to the debug keystore and no unsigned-artifact mode.
-3. **Debug builds** keep AGP's local debug keystore
-   (`~/.android/debug.keystore`), so a fresh clone still builds with zero setup.
-   The debug key is never used for a release.
-4. **Credentials live outside Git.** Only the non-secret keystore path and alias
-   are in `gradle.properties`; passwords arrive from the environment
-   (`RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEY_PASSWORD`) or `-P` flags.
-5. **CI restores the key from GitHub Actions secrets only**
-   (`RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
-   `RELEASE_KEY_PASSWORD`) into the runner's temp directory, deletes it after the
-   job, and fails the run if any of them is missing.
-6. **Signature gate.** Each build verifies the APK signer's SHA-256 against the
-   current fingerprint above and fails on any mismatch, so a debug-signed or
-   otherwise wrong APK cannot be published.
-7. **Secret-hygiene gate** (`git ls-files` check in CI) fails any build that
-   tracks keystore/base64 material again.
-8. **History cleanup.** The compromised blob was removed from every reachable
-   branch and tag with `git filter-repo` plus a force-push, so the old commit is
-   no longer reachable from repository refs.
+Never include in a report: private keys, keystore files, passwords, tokens, or
+any real user data.
 
-### User impact — one-time reinstall
+## Release Signing
 
-Because the signing identity changed, Android refuses to install a new release
-over an app signed with the old key
-(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Anyone on v2.0.0–v2.5.0 must uninstall
-the old app once and then install the new APK — export a backup from Settings
-first if the data matters.
+| Item | Value |
+|---|---|
+| Certificate owner | `CN=TermChin Release, O=TermChin, C=IR` |
+| Algorithm | RSA 4096 |
+| **SHA-256 fingerprint** | `0d38aa655105b0af6a0c0a1d26b37dbb872d20b6b4ab63fbeb9f88aa195adda0` |
 
-### Remaining risks (this is not "100% secure")
+Verify an APK before installing it:
 
-- The key was public for a long time: clones, forks, CI caches and mirrors that
-  already fetched it keep their own copies, and rewriting history does not
-  un-leak it.
-- Whoever holds the old key can still forge an APK that installs **over** the old
-  releases (v2.0.0–v2.5.0). Only replacing those installs removes that exposure.
-- Previously published release assets signed with the old key remain
-  downloadable. They are the genuine old builds, but they carry the compromised
-  certificate, so users should move off them.
-- The new private key exists on the maintainer's machine and in GitHub Actions
-  secrets. If it is lost, a later release needs a new key (and another
-  reinstall); if it leaks, it must be rotated the same way.
+```bash
+apksigner verify --print-certs TermChin-vX.Y.Z.apk | grep 'SHA-256 digest'
+```
 
-## 2. What must never be committed
+The digest must equal the fingerprint above. Any other digest means the APK was
+not produced by this project.
 
-- Keystores, their base64 dumps, keystore passwords, GitHub tokens.
-- `local.properties`, `.env` (gitignored) — CI reads them from secrets/env.
+Rules enforced by the build:
 
-## 3. Data safety rules
+1. **Four environment variables, no fallbacks.** Release signing reads exactly
+   `RELEASE_KEYSTORE_PATH`, `RELEASE_KEY_ALIAS`, `RELEASE_KEYSTORE_PASSWORD`,
+   `RELEASE_KEY_PASSWORD`. Legacy names and `-P` overrides are not honoured, and
+   there is no default keystore.
+2. **Fails closed when a value is missing.** `assembleRelease` depends on the
+   `verifyReleaseSigning` Gradle task, which aborts with an explicit error if any
+   of the four is unset. A release artifact can never be unsigned or
+   debug-signed.
+3. **Fails closed when a value is wrong.** The same task then proves the four
+   values work together: it opens the keystore with `RELEASE_KEYSTORE_PASSWORD`,
+   requires `RELEASE_KEY_ALIAS` to be a private-key entry in it, and requires
+   `RELEASE_KEY_PASSWORD` to decrypt that entry. A wrong password, a wrong
+   alias, or a keystore that is not really a keystore stops the build before
+   packaging begins — with the failure named — instead of failing late or
+   publishing something signed by an unexpected key.
+4. **The keystore is never in Git.** It lives outside the working tree and is
+   supplied to CI only as a repository secret, restored into the runner's temp
+   directory for the job and deleted afterwards.
+5. **CI verifies the certificate.** Every build compares the built APK's signer
+   SHA-256 against the fingerprint above, and explicitly rejects the retired
+   certificate. A mismatch fails the run.
+6. **No signing material may be tracked.** A CI gate fails the build if any
+   `*.jks`, `*.keystore`, `*.b64`, `*.base64` or `debug.keystore` file ever
+   becomes a tracked file again.
 
-- The app must **never** delete user data automatically at startup (the old
-  DataStore-marker wipe was removed in v2.5.0; see
-  `StartupDataPreservationTest`).
-- Wiping the database is only possible through the explicit "حذف همهٔ
-  اطلاعات" action in Settings.
-- All Room schema changes must bump `AppDatabase.version` and ship a
-  `Migration`; destructive migrations are forbidden.
+Debug builds use the ordinary local Android debug keystore so a fresh clone
+builds with zero setup. The debug key never signs a release.
+
+## Historical Signing-Key Incident
+
+TermChin's early releases were signed with a certificate that was later
+**committed to this public repository**, which means the private key must be
+treated as permanently compromised. That key is **retired**: it no longer signs
+anything, and all history reachable from the repository's branches and tags has
+been cleaned so the material is gone.
+
+Two consequences remain, and neither can be undone retroactively:
+
+- Copies may still exist in older clones, forks, forks' caches and mirrors.
+  Rewriting this repository's history does not reach those.
+- APKs signed with the retired certificate (v2.0.0–v2.5.0) remain installable
+  from the Releases page, and whoever holds the retired key could still sign
+  an APK that installs as an update over *those* builds only.
+
+**Migration impact — one-time reinstall.** Because the signing identity
+changed, Android refuses to install a current release over a build signed with
+the retired key (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). The first upgrade
+requires: export a backup from the app, uninstall, install the new APK, re-import
+the backup. Builds signed with the *current* key update normally afterwards.
+
+**This is not "100% secure".** Rotation removes the ongoing exposure for future
+releases; it cannot un-publish a key that was already public.
+
+## Data & Privacy
+
+- **Offline by construction.** The app declares no `INTERNET` permission, so it
+  cannot make network connections. A CI gate fails the build if `INTERNET` ever
+  appears in the released APK.
+- **OS backup is disabled.** The manifest sets `android:allowBackup="false"`,
+  so Android Auto Backup and device-to-device transfer do not copy the app's
+  data to a cloud account or another device. The only backup mechanism is the
+  app's own **Settings → Export JSON**, saved wherever the user chooses.
+- **What is stored locally:** course catalog and enrollments, weekly schedule,
+  documents metadata and preferences (Room + DataStore, both app-private
+  internal storage).
+- **Attached files are not copied by TermChin.** A document attachment points
+  at a file the user selected through Android's storage picker; the file stays
+  where the user put it.
+- **No data is deleted automatically.** The database is only cleared through
+  the explicit "حذف همهٔ اطلاعات" action in Settings. Room schema changes always
+  ship a migration; destructive migrations are forbidden.
+
+## What must never be committed
+
+- Keystores, keystore dumps, passwords, tokens, API keys.
+- `local.properties`, `.env`, or anything under `.ci-secrets/`.

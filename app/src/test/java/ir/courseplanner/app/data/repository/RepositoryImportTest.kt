@@ -206,4 +206,48 @@ class RepositoryImportTest {
         assertEquals(1, enrolled.size)
         assertEquals("1", enrolled[0].section.sectionCode)
     }
+
+    // ---------------------------------------------------------------- importItems
+    // The JSON/CSV restore path (`importItems`) had no re-import coverage; only
+    // the portal path was tested, so a duplicate-on-reimport regression there
+    // would have gone unnoticed.
+
+    @Test
+    fun `importing the same payload twice does not duplicate courses or groups`() = runBlocking {
+        val payload = listOf(portalItem("10103", listOf("1", "2")))
+
+        repository.importItems(payload, clearExisting = false)
+        repository.importItems(payload, clearExisting = false)
+        repository.importItems(payload, clearExisting = false)
+
+        assertEquals(1, db.courseDao().getCourseCount())
+        val courseId = db.courseDao().getCourseByCode("10103")!!.id
+        assertEquals(2, db.sectionDao().getSectionsByCourseId(courseId).size)
+        assertEquals(2, db.sectionDao().getAllSectionsWithDetails().first().size)
+    }
+
+    @Test
+    fun `import matches course codes in normalized form`() = runBlocking {
+        repository.importItems(listOf(portalItem(" MATH101 ", listOf("1"))))
+        repository.importItems(listOf(portalItem("math101", listOf("1"))))
+        repository.importItems(listOf(portalItem("  Math101", listOf("1"))))
+
+        assertEquals(
+            "case/spacing variants are one course, not three",
+            1,
+            db.courseDao().getCourseCount()
+        )
+    }
+
+    @Test
+    fun `reimport keeps the generator tick when the file is restored again`() = runBlocking {
+        repository.importItems(listOf(portalItem("10103", listOf("1"))))
+        val courseId = db.courseDao().getCourseByCode("10103")!!.id
+        repository.toggleCourseSelectedForGeneration(courseId, true)
+
+        repository.importItems(listOf(portalItem("10103", listOf("1"))))
+
+        assertTrue(db.courseDao().getCourseById(courseId)!!.isSelectedForGeneration)
+        assertEquals(1, db.courseDao().getCourseCount())
+    }
 }

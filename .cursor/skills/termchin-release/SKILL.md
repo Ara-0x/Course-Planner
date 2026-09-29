@@ -1,141 +1,141 @@
 ---
 name: termchin-release
 description: >-
-  Build, test, verify, bump, tag, and publish releases for the TermChin (Course Planner) Android project.
-  Use when preparing or executing a new release, running local offline tests, assembling debug APKs,
-  verifying APK version metadata, updating README changelogs, pushing tags, and monitoring GitHub Actions releases.
+  Build, test, verify, bump, tag, and publish releases for the TermChin Android
+  project. Use when preparing or executing a new release, running local tests,
+  assembling APKs, verifying APK version metadata, updating README changelogs,
+  pushing tags, and monitoring GitHub Actions releases.
 ---
 
-# TermChin Android Build, Test & Release Workflow
+# TermChin — Build, Test & Release Workflow
 
-This skill encapsulates the battle-tested, offline-capable verification and release pipeline for the **TermChin (Course Planner)** Android project.
+Portable release pipeline for **TermChin** (`ir.courseplanner.app`). Nothing
+below assumes a specific machine, OS or checkout path — run every command from
+the repository root.
 
----
+## 1. Prerequisites
 
-## 1. Environment & Prerequisites
+- **JDK 17** (release build toolchain; `JAVA_HOME` must point at it)
+- **Android SDK** with **Platform 36** and **Build-tools 36.0.0**
+  (`ANDROID_HOME` must point at it, or `sdk.dir` in `local.properties`)
+- **Gradle Wrapper is checked in** — `gradlew`, `gradlew.bat` and
+  `gradle/wrapper/gradle-wrapper.jar` are committed, so no preinstalled Gradle
+  is required.
 
-Gradle Wrapper (`gradlew`) is not checked into the repository; use the local standalone toolchain with JDK 17:
+Shell used below:
 
-- **JDK 17:** `C:\Users\Amirreza\.buildtools\jdk-17`
-- **Android SDK:** `C:\Users\Amirreza\.buildtools\android`
-- **Standalone Gradle:** `C:\Users\Amirreza\.buildtools\gradle-9.3.1\bin\gradle.bat`
-- **aapt tool:** `C:\Users\Amirreza\.buildtools\android\build-tools\36.0.0\aapt.exe`
-
-### Setting up Process Environment
-Whenever executing Gradle in PowerShell, always configure the process environment properly:
-```powershell
-$env:JAVA_HOME = "C:\Users\Amirreza\.buildtools\jdk-17"
-$env:ANDROID_HOME = "C:\Users\Amirreza\.buildtools\android"
-$env:PATH = "C:\Users\Amirreza\.buildtools\jdk-17\bin;$env:PATH"
+```bash
+# Linux / macOS
+./gradlew <task>
 ```
 
----
-
-## 2. Step 1: Local Test & Build Verification (Before Commit)
-
-### A. Non-blocking Background Execution
-Interactive terminal shells can hang or timeout on long-running Gradle operations. **Always launch Gradle via background PowerShell scripts redirected to log files**:
 ```powershell
-@'
-$env:JAVA_HOME = "C:\Users\Amirreza\.buildtools\jdk-17"
-$env:ANDROID_HOME = "C:\Users\Amirreza\.buildtools\android"
-$env:PATH = "C:\Users\Amirreza\.buildtools\jdk-17\bin;$env:PATH"
-& "C:\Users\Amirreza\.buildtools\gradle-9.3.1\bin\gradle.bat" :app:testDebugUnitTest --offline --tests "ir.courseplanner.app.data.importer.PooyaHtmlParserTest" --tests "ir.courseplanner.app.ui.CourseFiltersTest" --tests "ir.courseplanner.app.util.*" --tests "ir.courseplanner.app.engine.ScheduleParityTest" --tests "ir.courseplanner.app.ExampleUnitTest" > test_run.log 2>&1
-'@ | Set-Content -Path run_test.ps1; Start-Process -FilePath "powershell.exe" -ArgumentList "-ExecutionPolicy", "Bypass", "-File", "run_test.ps1"
-```
-Poll the log until `BUILD SUCCESSFUL` or failure is reported:
-```powershell
-Start-Sleep -Seconds 12; Get-Content test_run.log -Tail 15 -ErrorAction SilentlyContinue
+# Windows (PowerShell / cmd)
+.\gradlew.bat <task>
 ```
 
-### B. Pure JUnit vs Robolectric Tests
-- **Local Unit Tests:** Run only pure JUnit suites (`PooyaHtmlParserTest`, `CourseFiltersTest`, `JalaliDateTest`, `TimetableExporterTest`, `ScheduleParityTest`, `ExampleUnitTest`).
-- **Robolectric Tests:** Local environment has JDK 17, while target SDK 36 Robolectric tests may require JDK 21 or cause bytecode conflicts locally. Robolectric tests run automatically on GitHub Actions CI.
+## 2. Step 1 — Test and build (before committing)
 
-### C. Build Debug APK
-Build the debug package offline:
-```powershell
-@'
-$env:JAVA_HOME = "C:\Users\Amirreza\.buildtools\jdk-17"
-$env:ANDROID_HOME = "C:\Users\Amirreza\.buildtools\android"
-$env:PATH = "C:\Users\Amirreza\.buildtools\jdk-17\bin;$env:PATH"
-& "C:\Users\Amirreza\.buildtools\gradle-9.3.1\bin\gradle.bat" :app:assembleDebug --offline > build_run.log 2>&1
-'@ | Set-Content -Path run_build.ps1; Start-Process -FilePath "powershell.exe" -ArgumentList "-ExecutionPolicy", "Bypass", "-File", "run_build.ps1"
+```bash
+./gradlew testDebugUnitTest
+./gradlew assembleDebug
 ```
 
-### D. Verify APK Version with AAPT
-Android rejects APK installation if `versionCode` matches the existing installed version. Always verify badging:
-```powershell
-& "C:\Users\Amirreza\.buildtools\android\build-tools\36.0.0\aapt.exe" dump badging app/build/outputs/apk/debug/app-debug.apk | Select-String -Pattern "versionCode|versionName"
+Both must finish with `BUILD SUCCESSFUL`. A red test suite blocks a release.
+
+Confirm the APK version (Android refuses an install with a duplicate
+`versionCode`, so this must be checked every time):
+
+```bash
+"$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging \
+  app/build/outputs/apk/debug/app-debug.apk | grep -E "versionCode|versionName"
 ```
 
+### Release build (optional locally, mandatory in CI)
 
----
+Release signing needs **four environment variables and nothing else** — there
+are no `-P`, `gradle.properties` or legacy fallbacks:
 
-## 3. Step 2: Version Bumping & Documentation
+```bash
+export RELEASE_KEYSTORE_PATH=/path/to/termchin-release.jks
+export RELEASE_KEY_ALIAS=<alias>
+export RELEASE_KEYSTORE_PASSWORD=<secret>
+export RELEASE_KEY_PASSWORD=<secret>
 
-### A. Bump Version in `app/build.gradle.kts`
-- Increment `versionCode` (e.g. from `11` to `12`).
-- Update `versionName` (e.g. `"2.2.1"`).
+./gradlew assembleRelease
+```
 
-### B. Update `README.md`
-- Update badge/current version info: `**نسخه فعلی: vX.Y.Z** (بیلد versionCode=N)`.
-- Prepend the new release row to the version history table (`📋 تاریخچه نسخه‌ها`).
+If any of the four is missing, `verifyReleaseSigning` fails the build with an
+explicit error instead of producing an unsigned or debug-signed APK. It also
+validates the values: the keystore must open with `RELEASE_KEYSTORE_PASSWORD`,
+`RELEASE_KEY_ALIAS` must be a private-key entry in it, and `RELEASE_KEY_PASSWORD`
+must decrypt that entry. Check just the credentials (no APK) with:
 
-### C. Sync `.github/workflows/build-apk.yml`
-- Ensure the aapt verification assertion expects the new versions:
-  ```yaml
-  "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -E "versionCode='12'|versionName='2.2.1'"
-  ```
-- Ensure release name, tags, and asset copying are aligned (`CoursePlanner-vX.Y.Z.apk`).
-- Update the release body template in the workflow with the Persian release notes.
+```bash
+./gradlew verifyReleaseSigning
+```
 
----
+Add `--no-configuration-cache` right after changing the variables if you want to
+be certain the new values (not a cached configuration) were used. The keystore
+itself must never live inside the repository (see `docs/SECURITY.md`).
 
-## 4. Step 3: Git Commit, Push & Tagging
+## 3. Step 2 — Version bump and documentation
 
-1. **Check Untracked & Sensitive Files:**
-   Verify `git status` to ensure temporary log files, secrets, or keystores are not staged:
-   ```powershell
-   Remove-Item run_test.ps1, test_run.log, run_build.ps1, build_run.log -ErrorAction SilentlyContinue
-   git status
-   ```
+1. **`app/build.gradle.kts`** — increment `versionCode` by one and update
+   `versionName`. This file is the single source of truth; CI reads both from it
+   and never hardcodes them.
+2. **`README.md`**
+   - update the current-version mention to `vX.Y.Z (بیلد N)`,
+   - prepend a row to `📋 تاریخچه نسخه‌ها`.
+3. **`docs/CHANGELOG.md`** — prepend a `## [X.Y.Z]` section.
+4. **`.github/workflows/build-apk.yml`** — no version is hardcoded there; only
+   update the Persian release-notes `body:` block with this release's changes.
+   Artifact names are derived from the version and are already `TermChin-…`.
 
-2. **Stage and Commit:**
-   Follow conventional commits:
-   ```bash
-   git add -A
-   git commit -m "feat(ui): v2.2.1 - touch targets, typography mapping, RTL transitions, and release config"
-   ```
+## 4. Step 3 — Commit, push and tag
 
-3. **Push to Main:**
-   ```bash
-   git push origin main
-   ```
+```bash
+git status            # nothing sensitive or temporary must be staged
+git add -A
+git commit -m "feat(scope): vX.Y.Z - short summary"
+git push origin main
+```
 
-4. **Tag and Push Release Tag:**
-   ```bash
-   git tag -a v2.2.1 -m "Release v2.2.1"
-   git push origin v2.2.1
-   ```
+Then tag and push the tag (the tag triggers the release):
 
----
+```bash
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
 
-## 5. Step 4: GitHub Actions & Release Verification
+## 5. Step 4 — CI and release verification
 
-1. **Watch the Workflow Run:**
-   Pushing the tag `v*` triggers `.github/workflows/build-apk.yml`.
-   ```bash
-   gh run list --limit 3
-   gh run view <RUN_ID>
-   ```
+```bash
+gh run list --limit 3
+gh run view <RUN_ID>
+gh release view vX.Y.Z
+```
 
-2. **Verify Release Assets:**
-   Once the workflow concludes with `success`, inspect the published release:
-   ```bash
-   gh release view v2.2.1
-   ```
-   Confirm both artifacts exist:
-   - `CoursePlanner-vX.Y.Z.apk`
-   - `CoursePlanner-vX.Y.Z-<COMMIT_SHA>.apk` (cache-busting artifact)
-   - Release notes are formatted properly in Persian.
+The workflow must pass these gates, in order:
+
+1. `Secret-hygiene gate` — no keystore/base64 file is tracked in git.
+2. `Signing pre-flight` — `verifyReleaseSigning` proves the keystore opens, the
+   alias is a private-key entry and both passwords are correct (fails fast,
+   before the slow steps).
+3. `Unit tests` — `testDebugUnitTest` is green.
+4. `Build Release APK` — `assembleRelease` with the four `RELEASE_*` variables.
+5. `Verify APK carries new version` — `versionCode`/`versionName` match
+   `app/build.gradle.kts`.
+6. `Offline & backup gate` — the APK must not request `android.permission.INTERNET`
+   and `android:allowBackup` must stay `false`.
+7. `Signature gate` — signer SHA-256 equals the current release certificate
+   **and** differs from the retired certificate.
+8. `Version regression gate` (tags only) — `versionName` equals the tag and
+   `versionCode` is greater than the previous tag's.
+9. Keystore removed from the runner.
+
+Confirm the published assets exist:
+
+- `TermChin-vX.Y.Z.apk`
+- `TermChin-vX.Y.Z-<COMMIT_SHA>.apk` (cache-busting copy)
+- Release notes rendered correctly in Persian.

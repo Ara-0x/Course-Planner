@@ -57,13 +57,26 @@ class CourseRepository(
         return courseDao.getCourseCount()
     }
 
-    /** Whole import runs in one transaction: all-or-nothing, never partial. */
+    /**
+     * JSON/CSV import (restoring a backup). Runs in ONE transaction:
+     * all-or-nothing, never partial.
+     *
+     * Re-import is UPSERT rather than append: a course already present under the
+     * same NORMALIZED code is refreshed instead of duplicated. Previously this
+     * path called [insertAll] unconditionally, so importing a file twice (or
+     * importing a backup whose codes differed from the stored ones only by case
+     * or spacing) silently doubled every course. Catalog fields are refreshed
+     * while the user's own state — generator ticks, enrollment, documents — is
+     * kept, exactly like [importPortalItems].
+     */
     suspend fun importItems(items: List<ImportItem>, clearExisting: Boolean = false) {
         db.withTransaction {
             if (clearExisting) {
                 clearAllData()
             }
-            insertAll(items)
+            for (item in items) {
+                syncCourse(item)
+            }
         }
     }
 
@@ -103,7 +116,12 @@ class CourseRepository(
     }
 
     private suspend fun syncCourse(item: ImportItem) {
-        val existing = courseDao.getCourseByCode(item.course.code)
+        // Matched in NORMALIZED form (trim + upper-case), so " math101 " and
+        // "MATH101" are one course. The exact `code =` lookup used before
+        // silently created a second row whenever the imported code differed
+        // from the stored one only by case or spacing — even though the manual
+        // create/edit paths already forbid that duplicate.
+        val existing = findCourseByNormalizedCode(item.course.code)
         if (existing == null) {
             insertAll(listOf(item))
             return
@@ -115,12 +133,17 @@ class CourseRepository(
                 isSelectedForGeneration = existing.isSelectedForGeneration
             )
         )
+        // Sections are matched in NORMALIZED form too, for the same reason:
+        // uniqueness of a group code inside a course is defined by
+        // `normalizeCode`, so an exact-string match here could insert a second
+        // row that the create/edit paths would have refused.
         val existingSections = sectionDao.getSectionsByCourseId(existing.id)
-            .associateBy { it.sectionCode }
+            .associateBy { normalizeCode(it.sectionCode) }
         val importedCodes = mutableSetOf<String>()
         for (secItem in item.sections) {
-            importedCodes.add(secItem.section.sectionCode)
-            val old = existingSections[secItem.section.sectionCode]
+            val importedCode = normalizeCode(secItem.section.sectionCode)
+            importedCodes.add(importedCode)
+            val old = existingSections[importedCode]
             if (old == null) {
                 val sectionId = sectionDao.insertSection(secItem.section.copy(courseId = existing.id))
                 sectionDao.insertSessions(secItem.sessions.map { it.copy(sectionId = sectionId) })
@@ -137,8 +160,8 @@ class CourseRepository(
             }
         }
         // Drop stale catalog-only sections; never touch the user's enrolled pick.
-        for ((code, old) in existingSections) {
-            if (code !in importedCodes && !old.isEnrolled) {
+        for ((normalizedCode, old) in existingSections) {
+            if (normalizedCode !in importedCodes && !old.isEnrolled) {
                 sectionDao.deleteSectionById(old.id)
             }
         }
