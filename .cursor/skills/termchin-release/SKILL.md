@@ -79,6 +79,29 @@ Add `--no-configuration-cache` right after changing the variables if you want to
 be certain the new values (not a cached configuration) were used. The keystore
 itself must never live inside the repository (see `docs/SECURITY.md`).
 
+### Windows: `clean` can fail while a daemon holds lint's cache
+
+CI runs `./gradlew clean assembleRelease`. On Windows the same command can fail
+with
+
+```
+java.io.IOException: Unable to delete directory ...\app\build
+Failed to delete some children. This might happen because a process has files
+open or has its working directory set in the target directory.
+```
+
+because the long-lived Gradle daemon keeps the lint cache
+(`app/build/intermediates/lint-cache/**`) open after a lint task runs in it. It
+is not a problem with the project — stop the daemon and clean again:
+
+```powershell
+.\gradlew.bat --stop
+.\gradlew.bat clean
+```
+
+Linux CI is unaffected: unlinking an open file is allowed there, which is why the
+workflow can keep `clean assembleRelease` in one command.
+
 ## 3. Step 2 — Version bump and documentation
 
 1. **`app/build.gradle.kts`** — increment `versionCode` by one and update
