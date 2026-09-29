@@ -113,7 +113,14 @@ jobs:
       # IMPORTANT: `clean` + --no-configuration-cache guarantees the APK is
       # rebuilt from current sources. Without clean, stale dex/resources from
       # the Gradle cache can make it look like "changes didn't land on APK".
+      # The signing passwords are handed to THIS step only: the keystore path
+      # arrives via $GITHUB_ENV from the restore step, but secrets exported as
+      # step-level env in one step do not reach later steps.
       - name: Build Release APK (clean rebuild from current sources)
+        env:
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew clean assembleRelease --no-configuration-cache --stacktrace
 
       - name: Verify APK carries new version (fail if stale)
